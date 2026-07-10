@@ -11,12 +11,12 @@
 
   const context = $derived(canvas?.getContext("2d"));
 
-  let tolerence = $state(2);
-
+  let tolerence = $state(1);
+  let shouldRenderSplitPoint = $state(true);
   let curve = $state<QuadraticBezier>({
     start: point(50, 50),
-    control: point(50, 200),
-    end: point(450, 200),
+    control: point(50, 150),
+    end: point(450, 300),
   });
 
   const HANDLE_RADIUS = 6;
@@ -67,9 +67,13 @@
     const [start, ...points] = line;
     context!.beginPath();
     context!.moveTo(start.x, start.y);
-    context?.fillRect(start.x - 2, start.y - 2, 4, 4);
+    if (shouldRenderSplitPoint) {
+      context?.fillRect(start.x - 2, start.y - 2, 4, 4);
+    }
     for (const p of points) {
-      context?.fillRect(p.x - 2, p.y - 2, 4, 4);
+      if (shouldRenderSplitPoint) {
+        context?.fillRect(p.x - 2, p.y - 2, 4, 4);
+      }
       context!.lineTo(p.x, p.y);
     }
     context!.stroke();
@@ -123,8 +127,26 @@
   <label>
     tolerence
     <input type="range" min="0.1" max="10" step="0.01" bind:value={tolerence} />
-    <input type="number" min="0.1" bind:value={tolerence} />
+    <input
+      type="number"
+      min="0.1"
+      bind:value={
+        () => tolerence,
+        (it) => {
+          if (it > 0) {
+            tolerence = it;
+          }
+        }
+      }
+    />
   </label>
+
+  <div>
+    <label>
+      <input type="checkbox" bind:checked={shouldRenderSplitPoint} />
+      render split points
+    </label>
+  </div>
 
   <p>section: {points.length - 1}</p>
 </div>
