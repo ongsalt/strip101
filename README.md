@@ -1,6 +1,6 @@
 # Todo
 - stroke
-- cubic bezier breaking
+- fix bug when some path are offscreen
 
 # References
 - [Spare strips](https://ethz.ch/content/dam/ethz/special-interest/infk/inst-pls/plf-dam/documents/StudentProjects/MasterTheses/2025-Laurenz-Thesis.pdf)

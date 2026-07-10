@@ -20,9 +20,9 @@ pub fn draw_svg_file(filename: &str) {
     let tree = usvg::Tree::from_str(&svg, &opt).unwrap();
     let root = tree.root();
 
-    let mut canvas = Canvas::new(1000, 1000);
-    canvas.offset = point(300.0, 300.0);
-    canvas.scale = 1.5;
+    let mut canvas = Canvas::new(1200, 1200);
+    canvas.offset = point(400.0, 400.0);
+    canvas.scale = 2.0;
     walk(root, &mut canvas);
 
     canvas.save("tiger.png");
