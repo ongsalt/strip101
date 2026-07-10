@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 
 use image::{ImageFormat, RgbaImage};
 use usvg::{Color, FillRule};
@@ -9,6 +10,18 @@ pub struct Canvas {
     pub image: RgbaImage,
     pub scale: f32,
     pub offset: Point,
+    profile: Option<ScanlineProfile>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct ScanlineProfile {
+    fills: u64,
+    break_into_lines: Duration,
+    active_segment_list: Duration,
+    active_segment_list_removal: Duration,
+    covarage_table_generation: Duration,
+    resolve_pass: Duration,
+    active_segment_counts: Vec<usize>,
 }
 
 impl Canvas {
@@ -19,6 +32,7 @@ impl Canvas {
             image,
             scale: 1.0,
             offset: point(0.0, 0.0),
+            profile: Some(ScanlineProfile::default()),
         }
     }
 
@@ -28,10 +42,55 @@ impl Canvas {
             .unwrap();
     }
 
+    pub fn dump_profile(&self) {
+        if let Some(profile) = &self.profile {
+            let (active_min, active_max, active_avg) = if profile.active_segment_counts.is_empty() {
+                (0, 0, 0.0)
+            } else {
+                let mut min = usize::MAX;
+                let mut max = 0usize;
+                let mut sum = 0usize;
+
+                for count in &profile.active_segment_counts {
+                    min = min.min(*count);
+                    max = max.max(*count);
+                    sum += *count;
+                }
+
+                (
+                    min,
+                    max,
+                    sum as f64 / profile.active_segment_counts.len() as f64,
+                )
+            };
+
+            eprintln!(
+                "fill_scanline profile: fills={}, break_into_lines={:?}, active_segment_list={:?}, active_segment_list_removal={:?}, covarage_table_generation={:?}, resolve_pass={:?}, active_segment_count[min={}, max={}, avg={:.2}, samples={}]",
+                profile.fills,
+                profile.break_into_lines,
+                profile.active_segment_list,
+                profile.active_segment_list_removal,
+                profile.covarage_table_generation,
+                profile.resolve_pass,
+                active_min,
+                active_max,
+                active_avg,
+                profile.active_segment_counts.len(),
+            );
+        }
+    }
+
     pub fn fill_scanline(&mut self, path: &Path, color: &Color, color_alpha: u8) {
+        let break_into_lines_start = Instant::now();
         let mut lines = path.break_into_lines();
+        let break_into_lines_duration = break_into_lines_start.elapsed();
         apply_transform(&mut lines, self.scale, self.offset);
         // println!("lines: {lines:.?}");
+
+        let mut active_segment_list_duration = Duration::ZERO;
+        let mut active_segment_list_removal_duration = Duration::ZERO;
+        let mut covarage_table_generation_duration = Duration::ZERO;
+        let mut resolve_pass_duration = Duration::ZERO;
 
         let mut lines_by_start_y: HashMap<u32, HashSet<usize>> = HashMap::new();
         let mut lines_by_end_y: HashMap<u32, HashSet<usize>> = HashMap::new();
@@ -66,13 +125,19 @@ impl Canvas {
 
             // update active segment list
             // sort by x
+            let active_segment_list_start = Instant::now();
             if let Some(_lines) = lines_by_start_y.get(&y) {
                 active_segments.extend(_lines);
                 // its nearly sorted btw
                 active_segments.sort_by_key(|index| lines[*index].min_x());
                 // println!("active_segments = {active_segments:.?}");
             }
+            active_segment_list_duration += active_segment_list_start.elapsed();
+            if let Some(profile) = &mut self.profile {
+                profile.active_segment_counts.push(active_segments.len());
+            }
 
+            let covarage_table_start = Instant::now();
             for line_index in &active_segments {
                 // clip it to y-strip
                 let Some(line) = lines[*line_index].clip_y(y, y + 1) else {
@@ -95,8 +160,10 @@ impl Canvas {
                     fill_table[x] += dy * (1.0 - xmid); // trapezoid, see image.png, or https://www.youtube.com/watch?v=B9bztU1sTFA
                 }
             }
+            covarage_table_generation_duration += covarage_table_start.elapsed();
 
             // remove shit from active segment list
+            let active_segment_list_removal_start = Instant::now();
             if let Some(lines) = lines_by_end_y.get(&y) {
                 let mut indices: Vec<usize> = vec![];
                 for line in lines {
@@ -109,8 +176,10 @@ impl Canvas {
                     active_segments.remove(*index);
                 }
             }
+            active_segment_list_removal_duration += active_segment_list_removal_start.elapsed();
 
             // resolve pass
+            let resolve_pass_start = Instant::now();
             let mut acc: f32 = 0.0;
             for x in 0..self.image.width() {
                 let winding = acc + fill_table[x as usize];
@@ -135,6 +204,16 @@ impl Canvas {
 
                 acc += covarage_table[x as usize];
             }
+            resolve_pass_duration += resolve_pass_start.elapsed();
+        }
+
+        if let Some(profile) = &mut self.profile {
+            profile.fills += 1;
+            profile.break_into_lines += break_into_lines_duration;
+            profile.active_segment_list += active_segment_list_duration;
+            profile.active_segment_list_removal += active_segment_list_removal_duration;
+            profile.covarage_table_generation += covarage_table_generation_duration;
+            profile.resolve_pass += resolve_pass_duration;
         }
 
         // println!("active_segments => {active_segments:.?}");

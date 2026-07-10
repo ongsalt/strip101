@@ -25,6 +25,8 @@ pub fn draw_svg_file(filename: &str) {
     canvas.scale = 2.0;
     walk(root, &mut canvas);
 
+    canvas.dump_profile();
+
     canvas.save("tiger.png");
 }
 
