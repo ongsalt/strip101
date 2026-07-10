@@ -1,122 +1,154 @@
 use std::collections::{HashMap, HashSet};
 
-use image::RgbaImage;
+use image::{ImageFormat, RgbaImage};
 use usvg::{Color, FillRule};
 
-use crate::path::Path;
+use crate::path::{Line, Path, Point, point};
 
-pub fn fill_scanline(path: &Path, image: &mut RgbaImage, color: &Color) {
-    let lines = path.break_into_lines();
-    // println!("lines: {lines:.?}");
+pub struct Canvas {
+    pub image: RgbaImage,
+    pub scale: f32,
+    pub offset: Point,
+}
 
-    let mut lines_by_start_y: HashMap<u32, HashSet<usize>> = HashMap::new();
-    let mut lines_by_end_y: HashMap<u32, HashSet<usize>> = HashMap::new();
+impl Canvas {
+    pub fn new(width: u32, height: u32) -> Self {
+        let image = RgbaImage::new(width, height);
 
-    for (index, line) in lines.iter().enumerate() {
-        let (y1, y2) = line.y_bounds();
-        if let Some(set) = lines_by_start_y.get_mut(&y1) {
-            set.insert(index);
-        } else {
-            let mut set = HashSet::new();
-            set.insert(index);
-            lines_by_start_y.insert(y1, set);
-        }
-
-        if let Some(set) = lines_by_end_y.get_mut(&y2) {
-            set.insert(index);
-        } else {
-            let mut set = HashSet::new();
-            set.insert(index);
-            lines_by_end_y.insert(y2, set);
+        Self {
+            image,
+            scale: 1.0,
+            offset: point(0.0, 0.0),
         }
     }
 
-    // contain a sorted (by x) index of `lines`
-    let mut active_segments: Vec<usize> = vec![];
+    pub fn save(&self, filename: &str) {
+        self.image
+            .save_with_format(filename, ImageFormat::Png)
+            .unwrap();
+    }
 
-    for y in 0..image.height() {
-        // fill of current index
-        let mut fill_table: Vec<f32> = vec![0.0; image.width() as usize];
-        // fill of everything after current index
-        let mut covarage_table: Vec<f32> = vec![0.0; image.width() as usize];
+    pub fn fill_scanline(&mut self, path: &Path, color: &Color, color_alpha: u8) {
+        let mut lines = path.break_into_lines();
+        apply_transform(&mut lines, self.scale, self.offset);
+        // println!("lines: {lines:.?}");
 
-        // update active segment list?
-        // sort by x
-        if let Some(_lines) = lines_by_start_y.get(&y) {
-            active_segments.extend(_lines);
-            // its nearly sorted btw
-            active_segments.sort_by_key(|index| lines[*index].min_x());
-            // println!("active_segments = {active_segments:.?}");
+        let mut lines_by_start_y: HashMap<u32, HashSet<usize>> = HashMap::new();
+        let mut lines_by_end_y: HashMap<u32, HashSet<usize>> = HashMap::new();
+
+        for (index, line) in lines.iter().enumerate() {
+            let (y1, y2) = line.y_bounds();
+            if let Some(set) = lines_by_start_y.get_mut(&y1) {
+                set.insert(index);
+            } else {
+                let mut set = HashSet::new();
+                set.insert(index);
+                lines_by_start_y.insert(y1, set);
+            }
+
+            if let Some(set) = lines_by_end_y.get_mut(&y2) {
+                set.insert(index);
+            } else {
+                let mut set = HashSet::new();
+                set.insert(index);
+                lines_by_end_y.insert(y2, set);
+            }
         }
 
-        for line_index in &active_segments {
-            // clip it to y-strip
-            let Some(line) = lines[*line_index].clip_y(y, y + 1) else {
-                continue;
-            };
+        // contain a sorted (by x) index of `lines`
+        let mut active_segments: Vec<usize> = vec![];
 
-            let (x_start, x_end) = line.x_bounds();
-            // println!("line = {line:.?}");
+        for y in 0..self.image.height() {
+            // fill of current index
+            let mut fill_table: Vec<f32> = vec![0.0; self.image.width() as usize];
+            // fill of everything after current index
+            let mut covarage_table: Vec<f32> = vec![0.0; self.image.width() as usize];
 
-            for x in x_start..=x_end {
-                let Some(line) = line.clip_x(x, x + 1) else {
+            // update active segment list?
+            // sort by x
+            if let Some(_lines) = lines_by_start_y.get(&y) {
+                active_segments.extend(_lines);
+                // its nearly sorted btw
+                active_segments.sort_by_key(|index| lines[*index].min_x());
+                // println!("active_segments = {active_segments:.?}");
+            }
+
+            for line_index in &active_segments {
+                // clip it to y-strip
+                let Some(line) = lines[*line_index].clip_y(y, y + 1) else {
                     continue;
                 };
 
-                let dy = line.1.y - line.0.y;
-                let xmid = (line.0.x + line.1.x) / 2.0 - x as f32;
+                let (x_start, x_end) = line.x_bounds();
+                // println!("line = {line:.?}");
 
-                let x = x as usize;
-                covarage_table[x] += dy;
-                fill_table[x] += dy * (1.0 - xmid); // trapezoid, see image.png, or https://www.youtube.com/watch?v=B9bztU1sTFA
-            }
-        }
+                for x in x_start..=x_end {
+                    let Some(line) = line.clip_x(x, x + 1) else {
+                        continue;
+                    };
 
-        // remove shit from active segment list
-        if let Some(lines) = lines_by_end_y.get(&y) {
-            let mut indices: Vec<usize> = vec![];
-            for line in lines {
-                let index = active_segments.iter().position(|it| *it == *line).unwrap();
-                indices.push(index);
-            }
+                    let dy = line.1.y - line.0.y;
+                    let xmid = (line.0.x + line.1.x) / 2.0 - x as f32;
 
-            indices.sort();
-            for index in indices.iter().rev() {
-                active_segments.remove(*index);
-            }
-        }
-
-        // resolve pass
-        let mut acc: f32 = 0.0;
-        for x in 0..image.width() {
-            let winding = acc + fill_table[x as usize];
-
-            let opacity = match path.fill_rule {
-                FillRule::NonZero => winding.abs().min(1.0),
-                FillRule::EvenOdd => {
-                    if winding as u32 % 2 == 0 {
-                        winding % 1.0
-                    } else {
-                        1.0 - (winding % 1.0)
-                    }
+                    let x = x as usize;
+                    covarage_table[x] += dy;
+                    fill_table[x] += dy * (1.0 - xmid); // trapezoid, see image.png, or https://www.youtube.com/watch?v=B9bztU1sTFA
                 }
-            };
+            }
 
-            let pixel = image.get_pixel_mut(x, y);
-            shitty_blend(
-                &[color.red, color.blue, color.green, 255],
-                &mut pixel.0,
-                opacity,
-            );
+            // remove shit from active segment list
+            if let Some(lines) = lines_by_end_y.get(&y) {
+                let mut indices: Vec<usize> = vec![];
+                for line in lines {
+                    let index = active_segments.iter().position(|it| *it == *line).unwrap();
+                    indices.push(index);
+                }
 
-            acc += covarage_table[x as usize];
+                indices.sort();
+                for index in indices.iter().rev() {
+                    active_segments.remove(*index);
+                }
+            }
+
+            // resolve pass
+            let mut acc: f32 = 0.0;
+            for x in 0..self.image.width() {
+                let winding = acc + fill_table[x as usize];
+
+                let opacity = match path.fill_rule {
+                    FillRule::NonZero => winding.abs().min(1.0),
+                    FillRule::EvenOdd => {
+                        if winding as u32 % 2 == 0 {
+                            winding % 1.0
+                        } else {
+                            1.0 - (winding % 1.0)
+                        }
+                    }
+                };
+
+                let pixel = self.image.get_pixel_mut(x, y);
+                shitty_blend(
+                    &[color.red, color.green, color.blue, color_alpha],
+                    &mut pixel.0,
+                    opacity,
+                );
+
+                acc += covarage_table[x as usize];
+            }
         }
-    }
 
-    // println!("active_segments => {active_segments:.?}");
-    // println!("lines.len() = {:.?}", lines.len());
-    // println!("lines = {lines:.?}");
-    // println!("lines_by_end_y => {lines_by_end_y:.?}");
+        // println!("active_segments => {active_segments:.?}");
+        // println!("lines.len() = {:.?}", lines.len());
+        // println!("lines = {lines:.?}");
+        // println!("lines_by_end_y => {lines_by_end_y:.?}");
+    }
+}
+
+fn apply_transform(lines: &mut Vec<Line>, scale: f32, offset: Point) {
+    for line in lines {
+        line.0 = line.0 * scale + offset;
+        line.1 = line.1 * scale + offset;
+    }
 }
 
 pub fn raster_band(path: &Path, image: &mut RgbaImage) {

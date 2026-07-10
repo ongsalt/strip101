@@ -5,7 +5,7 @@ use usvg::{Color, FillRule};
 
 use crate::{
     path::{Path, Point, point},
-    raster::{fill_scanline, raster_band},
+    raster::Canvas,
 };
 
 mod path;
@@ -14,9 +14,7 @@ mod raster;
 use usvg::tiny_skia_path::PathSegment as UPathSegment;
 
 fn main() {
-    let width = 800;
-    let height = 600;
-    let mut img = RgbaImage::new(width, height);
+    let mut canvas = Canvas::new(1000, 1000);
 
     let svg = fs::read_to_string("tiger.svg").unwrap();
     let opt = usvg::Options {
@@ -24,22 +22,23 @@ fn main() {
     };
 
     let tree = usvg::Tree::from_str(&svg, &opt).unwrap();
-    walk(&tree.root(), &mut img);
+    walk(&tree.root(), &mut canvas);
 
-    img.save_with_format("tiger.png", ImageFormat::Png).unwrap();
+    canvas.offset = point(500.0, 500.0);
+    canvas.save("tiger.png");
 }
 
-fn walk(parent: &usvg::Group, img: &mut RgbaImage) {
+fn walk(parent: &usvg::Group, canvas: &mut Canvas) {
     for node in parent.children() {
         // do stuff...
         match node {
-            usvg::Node::Group(group) => walk(group, img),
+            usvg::Node::Group(group) => walk(group, canvas),
             usvg::Node::Path(p) => {
                 let path: Path = p.deref().into();
                 if let Some(fill) = p.fill() {
                     match fill.paint() {
                         usvg::Paint::Color(color) => {
-                            fill_scanline(&path, img, color);
+                            canvas.fill_scanline(&path, color, fill.opacity().to_u8());
                         }
                         usvg::Paint::LinearGradient(_) => {}
                         usvg::Paint::RadialGradient(_) => {}
@@ -51,7 +50,7 @@ fn walk(parent: &usvg::Group, img: &mut RgbaImage) {
         }
 
         // handle subroots as well
-        node.subroots(|subroot| walk(subroot, img));
+        node.subroots(|subroot| walk(subroot, canvas));
     }
 }
 
@@ -78,35 +77,35 @@ impl From<usvg::tiny_skia_path::Point> for Point {
     }
 }
 
-fn draw_stuff() {
-    let width = 800;
-    let height = 600;
-    let mut img = RgbaImage::new(width, height);
+// fn draw_stuff() {
+//     let width = 800;
+//     let height = 600;
+//     let mut img = RgbaImage::new(width, height);
 
-    let mut path = Path::new();
+//     let mut path = Path::new();
 
-    // counter clockwise
-    // we need to ensure that eveverything are counter clockwise
-    path.move_to(point(0.0, 0.0))
-        .line_to(point(0.0, 200.0))
-        .line_to(point(200.0, 200.0))
-        .cubic_to(point(0.0, 0.0), point(200.0, 0.0), point(0.0, 200.0))
-        .close();
+//     // counter clockwise
+//     // we need to ensure that eveverything are counter clockwise
+//     path.move_to(point(0.0, 0.0))
+//         .line_to(point(0.0, 200.0))
+//         .line_to(point(200.0, 200.0))
+//         .cubic_to(point(0.0, 0.0), point(200.0, 0.0), point(0.0, 200.0))
+//         .close();
 
-    path.move_to(point(250.0, 0.0))
-        .line_to(point(230.0, 330.0))
-        .line_to(point(300.0, 300.0))
-        .quad_to(point(250.0, 0.0), point(300.0, 0.0))
-        .close();
+//     path.move_to(point(250.0, 0.0))
+//         .line_to(point(230.0, 330.0))
+//         .line_to(point(300.0, 300.0))
+//         .quad_to(point(250.0, 0.0), point(300.0, 0.0))
+//         .close();
 
-    path.move_to(point(50.0, 250.0))
-        .line_to(point(50.0, 350.0))
-        .line_to(point(150.0, 350.0))
-        .close();
+//     path.move_to(point(50.0, 250.0))
+//         .line_to(point(50.0, 350.0))
+//         .line_to(point(150.0, 350.0))
+//         .close();
 
-    let color = Color::new_rgb(255, 0, 0);
-    fill_scanline(&path, &mut img, &color);
+//     let color = Color::new_rgb(255, 0, 0);
+//     // fill_scanline(&path, &mut img, &color);
 
-    let save_path = std::path::Path::new("scanline.png");
-    img.save_with_format(&save_path, ImageFormat::Png).unwrap();
-}
+//     let save_path = std::path::Path::new("scanline.png");
+//     img.save_with_format(&save_path, ImageFormat::Png).unwrap();
+// }
