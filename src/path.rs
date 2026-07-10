@@ -2,7 +2,7 @@ use std::ops::{Add, Mul, Sub};
 
 use usvg::FillRule;
 
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
 pub struct Point {
     pub x: f32,
     pub y: f32,
@@ -122,6 +122,85 @@ impl QuadraticBezier {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CubicBezier {
+    pub start: Point,
+    pub control1: Point,
+    pub control2: Point,
+    pub end: Point,
+}
+
+impl CubicBezier {
+    pub fn sample(&self, t: f32) -> Point {
+        let a = self.start.lerp(self.control1, t);
+        let b = self.control1.lerp(self.control2, t);
+        let c = self.control2.lerp(self.end, t);
+
+        let d = a.lerp(b, t);
+        let e = b.lerp(c, t);
+        d.lerp(e, t)
+    }
+
+    pub fn split(&self, t: f32) -> (Self, Self) {
+        let ab = self.start.lerp(self.control1, t);
+        let bc = self.control1.lerp(self.control2, t);
+        let cd = self.control2.lerp(self.end, t);
+        let abc = ab.lerp(bc, t);
+        let bcd = bc.lerp(cd, t);
+        let mid = abc.lerp(bcd, t); // = B(t), on the curve
+
+        (
+            Self {
+                start: self.start,
+                control1: ab,
+                control2: abc,
+                end: mid,
+            },
+            Self {
+                start: mid,
+                control1: bcd,
+                control2: cd,
+                end: self.end,
+            },
+        )
+    }
+
+    pub fn is_flat(&self, tolerance: f32) -> bool {
+        let chord = self.end - self.start;
+
+        // if chord.dot(chord) < 1e-12 {
+        //     // chord is a point: flat only if controls are also at that point
+        //     return (self.control1 - self.start)
+        //         .dot(self.control1 - self.start)
+        //         .max((self.control2 - self.start).dot(self.control2 - self.start))
+        //         <= tolerance * tolerance;
+        // }
+
+        let arm1 = (self.control1 - self.start).cross(chord).abs();
+        let arm2 = (self.control2 - self.start).cross(chord).abs();
+
+        let cross = arm1.max(arm2);
+        tolerance * tolerance * chord.length_squared() >= cross * cross
+    }
+
+    /// polyline that stays within `tolerance` of the curve
+    pub fn flatten_recursive_subdivision(self, tolerance: f32) -> Vec<Point> {
+        fn walk(curve: CubicBezier, tolerance: f32, out: &mut Vec<Point>, depth: u32) {
+            if curve.is_flat(tolerance) {
+                out.push(curve.end);
+                return;
+            }
+
+            let (left, right) = curve.split(0.5);
+            walk(left, tolerance, out, depth + 1);
+            walk(right, tolerance, out, depth + 1);
+        }
+
+        let mut points = vec![self.start];
+        walk(self, tolerance, &mut points, 0);
+        points
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PathCommand {
@@ -129,6 +208,7 @@ pub enum PathCommand {
     LineTo(Point),
     // (target, control)
     QuadTo(Point, Point),
+    CubicTo(Point, Point, Point),
     Close,
 }
 
@@ -175,6 +255,11 @@ impl Path {
         self
     }
 
+    pub fn cubic_to(&mut self, to: Point, control1: Point, control2: Point) -> &mut Self {
+        self.commands.push(PathCommand::CubicTo(to, control1, control2));
+        self
+    }
+
     pub fn close(&mut self) -> &mut Self {
         self.commands.push(PathCommand::Close);
         self
@@ -203,6 +288,20 @@ impl Path {
                     };
 
                     let points = quad.flatten_recursive_subdivision(0.5);
+                    for p in points.into_iter().skip(1) {
+                        lines.push(Line(current, p));
+                        current = p;
+                    }
+                }
+                PathCommand::CubicTo(point, c1, c2) => {
+                    let cubic = CubicBezier {
+                        start: current,
+                        control1: *c1,
+                        control2: *c2,
+                        end: *point,
+                    };
+
+                    let points = cubic.flatten_recursive_subdivision(0.5);
                     for p in points.into_iter().skip(1) {
                         lines.push(Line(current, p));
                         current = p;

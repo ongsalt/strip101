@@ -7,6 +7,7 @@ use crate::path::Path;
 
 pub fn fill_scanline(path: &Path, image: &mut RgbaImage, color: &Color) {
     let lines = path.break_into_lines();
+    // println!("lines: {lines:.?}");
 
     let mut lines_by_start_y: HashMap<u32, HashSet<usize>> = HashMap::new();
     let mut lines_by_end_y: HashMap<u32, HashSet<usize>> = HashMap::new();
