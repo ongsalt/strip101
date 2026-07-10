@@ -1,8 +1,9 @@
 use image::{ImageFormat, Rgba32FImage, RgbaImage};
+use usvg::{Color, FillRule};
 
 use crate::{
     path::{Path, point},
-    raster::{raster_band, raster_scanline},
+    raster::{fill_scanline, raster_band},
 };
 
 mod path;
@@ -14,6 +15,7 @@ fn main() {
     let mut img = RgbaImage::new(width, height);
 
     let mut path = Path::new();
+    path.set_fill_rule(FillRule::EvenOdd);
 
     // counter clockwise
 
@@ -37,7 +39,8 @@ fn main() {
         .line_to(point(150.0, 300.0))
         .close();
 
-    raster_scanline(&path, &mut img);
+    let color = Color::black();
+    fill_scanline(&path, &mut img, &color);
 
     let save_path = std::path::Path::new("scanline.png");
     img.save_with_format(&save_path, ImageFormat::Png).unwrap();

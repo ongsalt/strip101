@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use image::{ImageFormat, Rgba, Rgba32FImage, RgbaImage};
+use image::RgbaImage;
+use usvg::{Color, FillRule};
 
-use crate::path::{Line, Path};
+use crate::path::Path;
 
-pub fn raster_scanline(path: &Path, image: &mut RgbaImage) {
+pub fn fill_scanline(path: &Path, image: &mut RgbaImage, color: &Color) {
     let lines = path.break_into_lines();
 
     let mut lines_by_start_y: HashMap<u32, HashSet<usize>> = HashMap::new();
@@ -87,10 +88,25 @@ pub fn raster_scanline(path: &Path, image: &mut RgbaImage) {
         // resolve pass
         let mut acc: f32 = 0.0;
         for x in 0..image.width() {
-            let actual_coverage = acc + fill_table[x as usize];
+            let winding = acc + fill_table[x as usize];
+
+            let opacity = match path.fill_rule {
+                FillRule::NonZero => winding.abs().min(1.0),
+                FillRule::EvenOdd => {
+                    if winding as u32 % 2 == 0 {
+                        winding % 1.0
+                    } else {
+                        1.0 - (winding % 1.0)
+                    }
+                }
+            };
 
             let pixel = image.get_pixel_mut(x, y);
-            shitty_blend(&[255, 0, 0, 255], &mut pixel.0, actual_coverage / 2.0);
+            shitty_blend(
+                &[color.red, color.blue, color.green, 255],
+                &mut pixel.0,
+                opacity,
+            );
 
             acc += covarage_table[x as usize];
         }

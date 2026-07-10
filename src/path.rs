@@ -1,5 +1,7 @@
 use std::ops::{Add, Mul, Sub};
 
+use usvg::FillRule;
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Point {
     pub x: f32,
@@ -120,12 +122,6 @@ impl QuadraticBezier {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum FillRule {
-    #[default]
-    NonZero,
-    EvenOdd,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PathCommand {
