@@ -435,15 +435,16 @@ impl Path {
         let subpaths = self.break_into_subpath();
         let mut out = vec![];
 
-        println!("subpaths count = {}", subpaths.len());
+        // println!("subpaths count = {}", subpaths.len());
 
         for mut subpath in subpaths {
-            // let area = subpath.shoelace();
-            // if area.is_sign_positive() {
-            //     subpath.reverse();
-            //     println!("reversing {subpath:.?}");
-            // }
-            println!("reversing {subpath:.?}");
+            // TODO: fuckkkk, path direction
+            let area = subpath.shoelace();
+            if area.is_sign_positive() {
+                subpath.reverse();
+                // println!("reversing {subpath:.?}");
+            }
+            // println!("reversing {subpath:.?}");
             subpath.write_lines(&mut out);
         }
 
