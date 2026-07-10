@@ -24,13 +24,19 @@
   const HANDLE_RADIUS = 6;
   let dragging = $state<keyof QuadraticBezier | null>(null);
 
-
   $effect(() => {
     if (!context) {
       return;
     }
 
     context.clearRect(0, 0, 1000, 1000);
+
+    const imageData = context.createImageData(500, 500, {
+      pixelFormat: "rgba-unorm8",
+      // colorSpace: "display-p3",
+    });
+
+    // render(path, imageData.data)
 
     // renderActual(curve);
     // const points = breakCurve1(curve, 10)
@@ -159,7 +165,12 @@
   {onpointerup}
 ></canvas>
 
-<p>there are better way to do this like <a href="https://raphlinus.github.io/graphics/curves/2019/12/23/flatten-quadbez.html">this one</a></p>
+<p>
+  there are better way to do this like <a
+    href="https://raphlinus.github.io/graphics/curves/2019/12/23/flatten-quadbez.html"
+    >this one</a
+  >
+</p>
 
 <style>
   canvas {

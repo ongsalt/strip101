@@ -4,3 +4,4 @@
 - [Parallel vector graphics rasterization on CPU](https://gasiulis.name/parallel-rasterization-on-cpu/)
 - [Fast cubic Bézier curve offsetting.
 ](https://gasiulis.name/cubic-curve-offsetting/)
+- [The Scanline Sweeper: A Glyph Rendering Algorithm](https://www.youtube.com/watch?v=B9bztU1sTFA)

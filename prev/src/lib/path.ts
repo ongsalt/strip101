@@ -84,7 +84,37 @@ export function lerp(from: number, to: number, t: number) {
   return from * (1 - t) + (to * t);
 }
 
-type Line = {
-  start: Point;
+export type Path = {
+  commands: PathCommand[]
+  fillRule?: "non-zero" | "even-odd"
+}
+
+export type ClosedPath = {
+  segments: PathSegment[]
+}
+
+export type PathSegment = ({
+  kind: "quadratic",
+} & QuadraticBezier) | {
+  kind: "line",
+  start: Point,
   end: Point;
 };
+
+export type PathCommand = {
+  kind: "move",
+  to: Point
+} | {
+  kind: "line",
+  to: Point,
+} | {
+  kind: "quad",
+  to: Point,
+  control: Point
+} | {
+  kind: "close"
+}
+
+function breakPath(path: Path) {
+
+}
