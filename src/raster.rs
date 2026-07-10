@@ -7,16 +7,6 @@ use crate::path::{Line, Path};
 pub fn raster_scanline(path: &Path, image: &mut RgbaImage) {
     let lines = path.break_into_lines();
 
-    // very stupid way to stroke a path
-    // for line in &lines {
-    //     for i in 0..200 {
-    //         let t = f64::from(i) / 200.0;
-    //         let point = line.sample(t as f32);
-    //         let pixel = image.get_pixel_mut(point.x as u32, point.y as u32);
-    //         *pixel = image::Rgba([255, 0, 0, 255]);
-    //     }
-    // }
-
     let mut lines_by_start_y: HashMap<u32, HashSet<usize>> = HashMap::new();
     let mut lines_by_end_y: HashMap<u32, HashSet<usize>> = HashMap::new();
 
@@ -57,6 +47,29 @@ pub fn raster_scanline(path: &Path, image: &mut RgbaImage) {
             // println!("active_segments = {active_segments:.?}");
         }
 
+        for line_index in &active_segments {
+            // clip it to y-strip
+            let Some(line) = lines[*line_index].clip_y(y, y + 1) else {
+                continue;
+            };
+
+            let (x_start, x_end) = line.x_bounds();
+            // println!("line = {line:.?}");
+
+            for x in x_start..=x_end {
+                let Some(line) = line.clip_x(x, x + 1) else {
+                    continue;
+                };
+
+                let dy = line.1.y - line.0.y;
+                let xmid = (line.0.x + line.1.x) / 2.0 - x as f32;
+
+                let x = x as usize;
+                covarage_table[x] += dy;
+                fill_table[x] += dy * (1.0 - xmid); // trapezoid, see image.png, or https://www.youtube.com/watch?v=B9bztU1sTFA
+            }
+        }
+
         // remove shit from active segment list
         if let Some(lines) = lines_by_end_y.get(&y) {
             let mut indices: Vec<usize> = vec![];
@@ -71,49 +84,13 @@ pub fn raster_scanline(path: &Path, image: &mut RgbaImage) {
             }
         }
 
-        // compute coverage
-        // for x in 0..image.width() {
-        //     // box is x..x+1 y..y+1
-        // }
-
-        for line_index in &active_segments {
-            // clip it to y-strip
-            let Some(line) = lines[*line_index].clip_y(y, y + 1) else {
-                continue;
-            };
-
-            let (x_start, x_end) = line.x_bounds();
-            // println!("line = {line:.?}");
-
-            for x in x_start..=x_end {
-                let Some(line) = line.clip_x(x, x + 1) else {
-                    continue;
-                };
-                let x = x as usize;
-
-                let dy = line.1.y - line.0.y;
-                let xmid = (line.0.x + line.1.x) / 2.0 - line.0.x;
-
-                covarage_table[x] += dy;
-                fill_table[x] += dy * (1.0 - xmid); // trapezoid, see image.png, or https://www.youtube.com/watch?v=B9bztU1sTFA
-            }
-        }
-
-        if y == 120 {
-            println!("covarage_table = {covarage_table:.?}");
-        }
-
         // resolve pass
         let mut acc: f32 = 0.0;
         for x in 0..image.width() {
             let actual_coverage = acc + fill_table[x as usize];
 
             let pixel = image.get_pixel_mut(x, y);
-            shitty_blend(
-                &[200, 200, 200, 255],
-                &mut pixel.0,
-                actual_coverage.abs().min(1.0),
-            );
+            shitty_blend(&[255, 0, 0, 255], &mut pixel.0, actual_coverage / 2.0);
 
             acc += covarage_table[x as usize];
         }

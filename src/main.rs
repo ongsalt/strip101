@@ -15,6 +15,8 @@ fn main() {
 
     let mut path = Path::new();
 
+    // counter clockwise
+
     path.move_to(point(0.0, 0.0))
         .line_to(point(0.0, 100.0))
         .line_to(point(100.0, 100.0))
@@ -26,8 +28,13 @@ fn main() {
         .close();
 
     path.move_to(point(250.0, 0.0))
-        .line_to(point(300.0, 300.0))
         .line_to(point(230.0, 300.0))
+        .line_to(point(300.0, 300.0))
+        .close();
+
+    path.move_to(point(50.0, 200.0))
+        .line_to(point(50.0, 300.0))
+        .line_to(point(150.0, 300.0))
         .close();
 
     raster_scanline(&path, &mut img);

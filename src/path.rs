@@ -251,17 +251,18 @@ impl Line {
 
     pub fn y_bounds(&self) -> (u32, u32) {
         if self.0.y < self.1.y {
-            (self.0.y.floor() as u32, self.1.y.ceil() as u32)
+            (self.0.y.floor() as u32, self.1.y.floor() as u32)
         } else {
-            (self.1.y.floor() as u32, self.0.y.ceil() as u32)
+            (self.1.y.floor() as u32, self.0.y.floor() as u32)
         }
     }
 
+    // cell bounds, so its floor
     pub fn x_bounds(&self) -> (u32, u32) {
         if self.0.x < self.1.x {
-            (self.0.x.floor() as u32, self.1.x.ceil() as u32)
+            (self.0.x.floor() as u32, self.1.x.floor() as u32)
         } else {
-            (self.1.x.floor() as u32, self.0.x.ceil() as u32)
+            (self.1.x.floor() as u32, self.0.x.floor() as u32)
         }
     }
 
