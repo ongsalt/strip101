@@ -268,7 +268,7 @@ impl SubPath {
         let mut out = vec![];
         for segment in self.segments.iter().rev() {
             match segment {
-                PathSegment::Line(p2, p1) => {
+                PathSegment::Line(p1, p2) => {
                     out.push(PathSegment::Line(*p2, *p1));
                 }
                 PathSegment::Quadratic(QuadraticBezier {
@@ -437,14 +437,13 @@ impl Path {
 
         // println!("subpaths count = {}", subpaths.len());
 
-        for mut subpath in subpaths {
-            // TODO: fuckkkk, path direction
-            let area = subpath.shoelace();
-            if area.is_sign_positive() {
-                subpath.reverse();
-                // println!("reversing {subpath:.?}");
-            }
-            // println!("reversing {subpath:.?}");
+        for (index, mut subpath) in subpaths.into_iter().enumerate() {
+            // let area = subpath.shoelace();
+            // if area.is_sign_positive() {
+            //     println!("before [{index}] {subpath:.?}");
+            //     subpath.reverse();
+            //     println!("reversing [{index}] {subpath:.?}");
+            // }
             subpath.write_lines(&mut out);
         }
 
