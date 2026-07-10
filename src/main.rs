@@ -15,7 +15,7 @@ fn main() {
     let mut img = RgbaImage::new(width, height);
 
     let mut path = Path::new();
-    path.set_fill_rule(FillRule::EvenOdd);
+    // path.set_fill_rule(FillRule::EvenOdd);
 
     // counter clockwise
 
@@ -26,21 +26,21 @@ fn main() {
         .close();
 
     // we need to ensure that eveverything are counter clockwise
-    path.move_to(point(0.0, 0.0))
-        .line_to(point(0.0, 200.0))
-        .line_to(point(200.0, 200.0))
-        .cubic_to(point(0.0, 0.0), point(200.0, 0.0), point(0.0, 200.0))
-        .close();
+    // path.move_to(point(0.0, 0.0))
+    //     // .line_to(point(0.0, 200.0))
+    //     // .line_to(point(200.0, 200.0))
+    //     .cubic_to(point(200.0, 200.0), point(200.0, 0.0), point(0.0, 200.0))
+    //     .close();
 
     path.move_to(point(250.0, 0.0))
-        .line_to(point(230.0, 300.0))
+        .line_to(point(230.0, 330.0))
         .line_to(point(300.0, 300.0))
         .quad_to(point(250.0, 0.0), point(300.0, 0.0))
         .close();
 
-    path.move_to(point(50.0, 150.0))
-        .line_to(point(50.0, 250.0))
-        .line_to(point(150.0, 250.0))
+    path.move_to(point(50.0, 250.0))
+        .line_to(point(150.0, 350.0))
+        .line_to(point(50.0, 350.0))
         .close();
 
     let color = Color::new_rgb(255, 0, 0);

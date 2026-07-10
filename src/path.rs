@@ -1,4 +1,7 @@
-use std::ops::{Add, Mul, Sub};
+use std::{
+    ops::{Add, Mul, Sub},
+    vec,
+};
 
 use usvg::FillRule;
 
@@ -214,8 +217,27 @@ pub enum PathCommand {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PathSegment {
-    Quadratic(QuadraticBezier),
     Line(Point, Point),
+    Quadratic(QuadraticBezier),
+    Cubic(CubicBezier),
+}
+
+impl PathSegment {
+    fn start(&self) -> Point {
+        match self {
+            PathSegment::Line(start, _) => *start,
+            PathSegment::Quadratic(curve) => curve.start,
+            PathSegment::Cubic(curve) => curve.start,
+        }
+    }
+
+    fn end(&self) -> Point {
+        match self {
+            PathSegment::Line(_, end) => *end,
+            PathSegment::Quadratic(curve) => curve.end,
+            PathSegment::Cubic(curve) => curve.end,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -225,8 +247,81 @@ pub struct Path {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct ClosedPath {
+pub struct SubPath {
     pub segments: Vec<PathSegment>,
+}
+
+impl SubPath {
+    // to determine if its ccw or not
+    fn shoelace(&self) -> f32 {
+        let mut area = 0.0;
+
+        for segment in &self.segments {
+            area += segment.start().x * segment.end().y;
+            area -= segment.end().x * segment.start().y;
+        }
+
+        area
+    }
+
+    fn reverse(&mut self) {
+        let mut out = vec![];
+        for segment in self.segments.iter().rev() {
+            match segment {
+                PathSegment::Line(p2, p1) => {
+                    out.push(PathSegment::Line(*p2, *p1));
+                }
+                PathSegment::Quadratic(QuadraticBezier {
+                    start,
+                    control,
+                    end,
+                }) => out.push(PathSegment::Quadratic(QuadraticBezier {
+                    start: *end,
+                    control: *control,
+                    end: *start,
+                })),
+                PathSegment::Cubic(CubicBezier {
+                    start,
+                    control1,
+                    control2,
+                    end,
+                }) => {
+                    out.push(PathSegment::Cubic(CubicBezier {
+                        start: *end,
+                        control1: *control2,
+                        control2: *control1,
+                        end: *start,
+                    }));
+                }
+            }
+        }
+
+        self.segments = out
+    }
+
+    fn write_lines(&self, output: &mut Vec<Line>) {
+        for segment in &self.segments {
+            match segment {
+                PathSegment::Line(p0, p1) => output.push(Line(*p0, *p1)),
+                PathSegment::Quadratic(curve) => {
+                    let points = curve.flatten_recursive_subdivision(0.5);
+                    let mut current = points[0];
+                    for p in points.into_iter().skip(1) {
+                        output.push(Line(current, p));
+                        current = p
+                    }
+                }
+                PathSegment::Cubic(curve) => {
+                    let points = curve.flatten_recursive_subdivision(0.5);
+                    let mut current = points[0];
+                    for p in points.into_iter().skip(1) {
+                        output.push(Line(current, p));
+                        current = p
+                    }
+                }
+            };
+        }
+    }
 }
 
 impl Path {
@@ -256,7 +351,8 @@ impl Path {
     }
 
     pub fn cubic_to(&mut self, to: Point, control1: Point, control2: Point) -> &mut Self {
-        self.commands.push(PathCommand::CubicTo(to, control1, control2));
+        self.commands
+            .push(PathCommand::CubicTo(to, control1, control2));
         self
     }
 
@@ -265,58 +361,93 @@ impl Path {
         self
     }
 
-    // TODO: subpath iter, change path direction if needed
-    pub fn break_into_lines(&self) -> Vec<Line> {
-        let mut lines = vec![];
+    pub fn break_into_subpath(&self) -> Vec<SubPath> {
+        let mut current: Option<SubPath> = None;
+        let mut out: Vec<SubPath> = vec![];
         let mut current_starting_point = point(0.0, 0.0);
-        let mut current = point(0.0, 0.0);
-        for segment in &self.commands {
-            match segment {
+        let mut curren_pos: Point = Point { x: 0.0, y: 0.0 };
+        for command in &self.commands {
+            match command {
                 PathCommand::MoveTo(point) => {
-                    current = *point;
+                    current = Some(SubPath { segments: vec![] });
+                    curren_pos = *point;
                     current_starting_point = *point;
                 }
                 PathCommand::LineTo(point) => {
-                    lines.push(Line(current, *point));
-                    current = *point;
+                    current
+                        .as_mut()
+                        .expect("Invalid path operation")
+                        .segments
+                        .push(PathSegment::Line(curren_pos, *point));
+                    curren_pos = *point
                 }
-                PathCommand::QuadTo(point, point1) => {
-                    let quad = QuadraticBezier {
-                        start: current,
-                        control: *point1,
-                        end: *point,
-                    };
+                PathCommand::QuadTo(target, c1) => {
+                    current
+                        .as_mut()
+                        .expect("Invalid path operation")
+                        .segments
+                        .push(PathSegment::Quadratic(QuadraticBezier {
+                            start: curren_pos,
+                            control: *c1,
+                            end: *target,
+                        }));
+                    curren_pos = *target;
+                }
+                PathCommand::CubicTo(target, c1, c2) => {
+                    current
+                        .as_mut()
+                        .expect("Invalid path operation")
+                        .segments
+                        .push(PathSegment::Cubic(CubicBezier {
+                            start: curren_pos,
+                            control1: *c1,
+                            control2: *c2,
+                            end: *target,
+                        }));
+                    curren_pos = *target;
+                }
 
-                    let points = quad.flatten_recursive_subdivision(0.5);
-                    for p in points.into_iter().skip(1) {
-                        lines.push(Line(current, p));
-                        current = p;
-                    }
-                }
-                PathCommand::CubicTo(point, c1, c2) => {
-                    let cubic = CubicBezier {
-                        start: current,
-                        control1: *c1,
-                        control2: *c2,
-                        end: *point,
-                    };
-
-                    let points = cubic.flatten_recursive_subdivision(0.5);
-                    for p in points.into_iter().skip(1) {
-                        lines.push(Line(current, p));
-                        current = p;
-                    }
-                }
                 PathCommand::Close => {
-                    if current != current_starting_point {
-                        lines.push(Line(current, current_starting_point));
-                        current = current_starting_point;
+                    if current_starting_point != curren_pos {
+                        current
+                            .as_mut()
+                            .expect("Invalid path operation")
+                            .segments
+                            .push(PathSegment::Line(curren_pos, current_starting_point));
+                        curren_pos = current_starting_point;
                     }
+
+                    out.push(current.expect("Invalid path operation"));
+                    current = None;
                 }
-            };
+            }
         }
 
-        lines
+        // TODO: auto close
+        // if let Some(path) = current {
+        // }
+
+        return out;
+    }
+
+    // TODO: subpath iter, change path direction if needed
+    pub fn break_into_lines(&self) -> Vec<Line> {
+        let subpaths = self.break_into_subpath();
+        let mut out = vec![];
+
+        println!("subpaths count = {}", subpaths.len());
+
+        for mut subpath in subpaths {
+            // let area = subpath.shoelace();
+            // if area.is_sign_positive() {
+            //     subpath.reverse();
+            //     println!("reversing {subpath:.?}");
+            // }
+            println!("reversing {subpath:.?}");
+            subpath.write_lines(&mut out);
+        }
+
+        out
     }
 }
 
