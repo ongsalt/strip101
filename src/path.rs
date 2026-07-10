@@ -1,11 +1,55 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
+use std::ops::{Add, Mul, Sub};
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Point {
-    pub x: f64,
-    pub y: f64,
+    pub x: f32,
+    pub y: f32,
 }
 
-pub fn point(x: f64, y: f64) -> Point {
+impl Point {
+    const fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
+}
+
+pub const fn point(x: f32, y: f32) -> Point {
     Point { x, y }
+}
+
+impl Point {
+    pub fn lerp(self, to: Self, t: f32) -> Self {
+        self + (to - self) * t
+    }
+
+    /// z-component of the 3D cross product; signed area of the parallelogram
+    pub fn cross(self, other: Self) -> f32 {
+        self.x * other.y - self.y * other.x
+    }
+
+    pub fn length_squared(self) -> f32 {
+        self.x * self.x + self.y * self.y
+    }
+}
+
+impl Add for Point {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self {
+        point(self.x + rhs.x, self.y + rhs.y)
+    }
+}
+
+impl Sub for Point {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        point(self.x - rhs.x, self.y - rhs.y)
+    }
+}
+
+impl Mul<f32> for Point {
+    type Output = Self;
+    fn mul(self, rhs: f32) -> Self {
+        point(self.x * rhs, self.y * rhs)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -15,78 +59,65 @@ pub struct QuadraticBezier {
     pub end: Point,
 }
 
-pub fn lerp(from: f64, to: f64, t: f64) -> f64 {
-    from * (1.0 - t) + to * t
-}
-
-pub fn sample_curve(curve: &QuadraticBezier, t: f64) -> Point {
-    let x1 = lerp(curve.start.x, curve.control.x, t);
-    let y1 = lerp(curve.start.y, curve.control.y, t);
-    let x2 = lerp(curve.control.x, curve.end.x, t);
-    let y2 = lerp(curve.control.y, curve.end.y, t);
-    point(lerp(x1, x2, t), lerp(y1, y2, t))
-}
-
-/// into polyline
-pub fn break_curve_1(curve: &QuadraticBezier, amount: u32) -> Vec<Point> {
-    (0..=amount)
-        .map(|i| sample_curve(curve, f64::from(i) / f64::from(amount)))
-        .collect()
-}
-
-pub fn break_curve_recursive_subdivision(curve: &QuadraticBezier, tolerence: f64) -> Vec<Point> {
-    let mut points = vec![curve.start];
-    walk(curve, tolerence, &mut points);
-    points
-}
-
-fn walk(curve: &QuadraticBezier, tolerence: f64, points: &mut Vec<Point>) {
-    if is_flat(curve, tolerence) {
-        points.push(curve.end);
-        return;
+impl QuadraticBezier {
+    pub fn sample(&self, t: f32) -> Point {
+        let a = self.start.lerp(self.control, t);
+        let b = self.control.lerp(self.end, t);
+        a.lerp(b, t)
     }
 
-    let center = sample_curve(curve, 0.5);
-    let c1 = point(
-        lerp(curve.start.x, curve.control.x, 0.5),
-        lerp(curve.start.y, curve.control.y, 0.5),
-    );
-    let c2 = point(
-        lerp(curve.control.x, curve.end.x, 0.5),
-        lerp(curve.control.y, curve.end.y, 0.5),
-    );
+    /// de Casteljau split into two curves meeting at `sample(t)`
+    pub fn split(&self, t: f32) -> (Self, Self) {
+        let a = self.start.lerp(self.control, t);
+        let b = self.control.lerp(self.end, t);
+        let mid = a.lerp(b, t);
 
-    walk(
-        &QuadraticBezier {
-            start: curve.start,
-            control: c1,
-            end: center,
-        },
-        tolerence,
-        points,
-    );
+        (
+            Self {
+                start: self.start,
+                control: a,
+                end: mid,
+            },
+            Self {
+                start: mid,
+                control: b,
+                end: self.end,
+            },
+        )
+    }
 
-    walk(
-        &QuadraticBezier {
-            start: center,
-            control: c2,
-            end: curve.end,
-        },
-        tolerence,
-        points,
-    );
-}
+    /// distance of the control point to the chord start..end is within `tolerance`
+    pub fn is_flat(&self, tolerance: f32) -> bool {
+        let chord = self.end - self.start;
+        let arm = self.control - self.start;
 
-fn is_flat(curve: &QuadraticBezier, tolerence: f64) -> bool {
-    let vx = curve.end.x - curve.start.x;
-    let vy = curve.end.y - curve.start.y;
+        let cross = chord.cross(arm);
+        tolerance * tolerance * chord.length_squared() >= cross * cross
+    }
 
-    let wx = curve.control.x - curve.start.x;
-    let wy = curve.control.y - curve.start.y;
+    /// polyline of `segments + 1` points sampled at even `t`
+    pub fn flatten_uniform(self, segments: u16) -> impl Iterator<Item = Point> {
+        let segments = segments.max(1);
+        (0..=segments).map(move |i| self.sample(f32::from(i) / f32::from(segments)))
+    }
 
-    // measure a distance of a control point to a line from start..end
-    let cross = vx * wy - vy * wx;
-    tolerence * tolerence * (vx * vx + vy * vy) >= cross * cross
+    /// polyline that stays within `tolerance` of the curve
+    pub fn flatten_recursive_subdivision(self, tolerance: f32) -> Vec<Point> {
+        fn walk(curve: QuadraticBezier, tolerance: f32, out: &mut Vec<Point>) {
+            if curve.is_flat(tolerance) {
+                out.push(curve.end);
+                return;
+            }
+
+            let (left, right) = curve.split(0.5);
+            walk(left, tolerance, out);
+            walk(right, tolerance, out);
+        }
+
+        let mut points = vec![self.start];
+        walk(self, tolerance, &mut points);
+        points
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -98,16 +129,17 @@ pub enum FillRule {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PathCommand {
-    Move { to: Point },
-    Line { to: Point },
-    Quad { to: Point, control: Point },
+    MoveTo(Point),
+    LineTo(Point),
+    // (target, control)
+    QuadTo(Point, Point),
     Close,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PathSegment {
     Quadratic(QuadraticBezier),
-    Line { start: Point, end: Point },
+    Line(Point, Point),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -121,4 +153,174 @@ pub struct ClosedPath {
     pub segments: Vec<PathSegment>,
 }
 
-fn break_path(_path: &Path) {}
+impl Path {
+    pub fn new() -> Self {
+        Self {
+            ..Default::default()
+        }
+    }
+
+    pub fn set_fill_rule(&mut self, rule: FillRule) {
+        self.fill_rule = rule;
+    }
+
+    pub fn move_to(&mut self, to: Point) -> &mut Self {
+        self.commands.push(PathCommand::MoveTo(to));
+        self
+    }
+
+    pub fn line_to(&mut self, to: Point) -> &mut Self {
+        self.commands.push(PathCommand::LineTo(to));
+        self
+    }
+
+    pub fn quad_to(&mut self, to: Point, control: Point) -> &mut Self {
+        self.commands.push(PathCommand::QuadTo(to, control));
+        self
+    }
+
+    pub fn close(&mut self) -> &mut Self {
+        self.commands.push(PathCommand::Close);
+        self
+    }
+
+    // TODO: subpath iter, change path direction if needed
+    pub fn break_into_lines(&self) -> Vec<Line> {
+        let mut lines = vec![];
+        let mut current_starting_point = point(0.0, 0.0);
+        let mut current = point(0.0, 0.0);
+        for segment in &self.commands {
+            match segment {
+                PathCommand::MoveTo(point) => {
+                    current = *point;
+                    current_starting_point = *point;
+                }
+                PathCommand::LineTo(point) => {
+                    lines.push(Line(current, *point));
+                    current = *point;
+                }
+                PathCommand::QuadTo(point, point1) => {
+                    let quad = QuadraticBezier {
+                        start: current,
+                        control: *point1,
+                        end: *point,
+                    };
+
+                    let points = quad.flatten_recursive_subdivision(0.5);
+                    for p in points.into_iter().skip(1) {
+                        lines.push(Line(current, p));
+                        current = p;
+                    }
+                }
+                PathCommand::Close => {
+                    if current != current_starting_point {
+                        lines.push(Line(current, current_starting_point));
+                        current = current_starting_point;
+                    }
+                }
+            };
+        }
+
+        lines
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Line(pub Point, pub Point);
+
+impl Line {
+    pub fn sample(&self, t: f32) -> Point {
+        self.0.lerp(self.1, t)
+    }
+
+    pub fn split_at_y(&self, y: f32) -> Option<(Line, Line)> {
+        let (a, b) = (self.0, self.1);
+        let dy = b.y - a.y;
+        if dy == 0.0 {
+            return None;
+        }
+
+        let t = (y - a.y) / dy;
+        if !(0.0..=1.0).contains(&t) {
+            return None;
+        }
+
+        let p = point(a.x + t * (b.x - a.x), y);
+        Some((Line(a, p), Line(p, b)))
+    }
+
+    pub fn y_bounds(&self) -> (u32, u32) {
+        if self.0.y < self.1.y {
+            (self.0.y.floor() as u32, self.1.y.ceil() as u32)
+        } else {
+            (self.1.y.floor() as u32, self.0.y.ceil() as u32)
+        }
+    }
+
+    pub fn x_bounds(&self) -> (u32, u32) {
+        if self.0.x < self.1.x {
+            (self.0.x.floor() as u32, self.1.x.ceil() as u32)
+        } else {
+            (self.1.x.floor() as u32, self.0.x.ceil() as u32)
+        }
+    }
+
+    pub fn min_x(&self) -> u32 {
+        self.0.x.min(self.1.x).floor() as u32
+    }
+
+    // -1 up, 1 down
+    pub fn dir(&self) -> f32 {
+        if self.1.y > self.0.y { 1.0 } else { -1.0 }
+    }
+
+    /// portion of the line inside the strip `start_y..end_y`, or `None` if disjoint.
+    /// keeps the original start-to-end direction, so winding is preserved.
+    /// `start_y` must be less than `end_y`
+    pub fn clip_y(&self, start_y: u32, end_y: u32) -> Option<Line> {
+        let (a, b) = (self.0, self.1);
+        let y1 = start_y as f32;
+        let y2 = end_y as f32;
+
+        let dy = b.y - a.y;
+        if dy == 0.0 {
+            // horizontal: wholly inside or wholly outside
+            return (y1..=y2).contains(&a.y).then_some(*self);
+        }
+
+        let ta = ((y1 - a.y) / dy).clamp(0.0, 1.0);
+        let tb = ((y2 - a.y) / dy).clamp(0.0, 1.0);
+        let (enter, exit) = if ta <= tb { (ta, tb) } else { (tb, ta) };
+
+        if exit <= enter {
+            // both ends clamped to the same side: no overlap
+            return None;
+        }
+
+        Some(Line(self.sample(enter), self.sample(exit)))
+    }
+
+    /// `start_x` must be less than `end_x`
+    pub fn clip_x(&self, start_x: u32, end_x: u32) -> Option<Line> {
+        let (a, b) = (self.0, self.1);
+        let x1 = start_x as f32;
+        let x2 = end_x as f32;
+
+        let dx = b.x - a.x;
+        if dx == 0.0 {
+            // vertical: wholly inside or wholly outside
+            return (x1..=x2).contains(&a.x).then_some(*self);
+        }
+
+        let ta = ((x1 - a.x) / dx).clamp(0.0, 1.0);
+        let tb = ((x2 - a.x) / dx).clamp(0.0, 1.0);
+        let (enter, exit) = if ta <= tb { (ta, tb) } else { (tb, ta) };
+
+        if exit <= enter {
+            // both ends clamped to the same side: no overlap
+            return None;
+        }
+
+        Some(Line(self.sample(enter), self.sample(exit)))
+    }
+}
