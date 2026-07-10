@@ -19,11 +19,11 @@
     end: point(450, 300),
   });
 
-  const HANDLE_RADIUS = 6;
+  const points = $derived(breakCurveRecursiveSubdivision(curve, tolerence));
 
+  const HANDLE_RADIUS = 6;
   let dragging = $state<keyof QuadraticBezier | null>(null);
 
-  const points = $derived(breakCurveRecursiveSubdivision(curve, tolerence));
 
   $effect(() => {
     if (!context) {
@@ -158,6 +158,8 @@
   {onpointermove}
   {onpointerup}
 ></canvas>
+
+<p>there are better way to do this like <a href="https://raphlinus.github.io/graphics/curves/2019/12/23/flatten-quadbez.html">this one</a></p>
 
 <style>
   canvas {
