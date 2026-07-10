@@ -361,12 +361,41 @@ impl Path {
         self
     }
 
-    pub fn break_into_subpath(&self) -> Vec<SubPath> {
+    pub fn break_into_subpath(&self) -> SubPathIter<'_> {
+        SubPathIter {
+            commands: self.commands.iter(),
+        }
+    }
+
+    pub fn break_into_lines(&self) -> Vec<Line> {
+        let mut out = vec![];
+        out.reserve(256);
+
+        for subpath in self.break_into_subpath() {
+            // let area = subpath.shoelace();
+            // if area.is_sign_positive() {
+            //     subpath.reverse();
+            // }
+            subpath.write_lines(&mut out);
+        }
+
+        out
+    }
+}
+
+pub struct SubPathIter<'a> {
+    commands: std::slice::Iter<'a, PathCommand>,
+}
+
+impl<'a> Iterator for SubPathIter<'a> {
+    type Item = SubPath;
+
+    fn next(&mut self) -> Option<SubPath> {
         let mut current: Option<SubPath> = None;
-        let mut out: Vec<SubPath> = vec![];
         let mut current_starting_point = point(0.0, 0.0);
         let mut curren_pos: Point = Point { x: 0.0, y: 0.0 };
-        for command in &self.commands {
+
+        for command in &mut self.commands {
             match command {
                 PathCommand::MoveTo(point) => {
                     current = Some(SubPath { segments: vec![] });
@@ -414,40 +443,15 @@ impl Path {
                             .expect("Invalid path operation")
                             .segments
                             .push(PathSegment::Line(curren_pos, current_starting_point));
-                        curren_pos = current_starting_point;
                     }
 
-                    out.push(current.expect("Invalid path operation"));
-                    current = None;
+                    return Some(current.expect("Invalid path operation"));
                 }
             }
         }
 
         // TODO: auto close
-        // if let Some(path) = current {
-        // }
-
-        return out;
-    }
-
-    // TODO: subpath iter, change path direction if needed
-    pub fn break_into_lines(&self) -> Vec<Line> {
-        let subpaths = self.break_into_subpath();
-        let mut out = vec![];
-
-        // println!("subpaths count = {}", subpaths.len());
-
-        for (index, mut subpath) in subpaths.into_iter().enumerate() {
-            // let area = subpath.shoelace();
-            // if area.is_sign_positive() {
-            //     println!("before [{index}] {subpath:.?}");
-            //     subpath.reverse();
-            //     println!("reversing [{index}] {subpath:.?}");
-            // }
-            subpath.write_lines(&mut out);
-        }
-
-        out
+        None
     }
 }
 
