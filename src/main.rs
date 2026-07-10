@@ -5,12 +5,12 @@ use usvg::Color;
 use crate::{
     path::{Path, point},
     raster::Canvas,
-    tiger::draw_svg_file,
+    svg::draw_svg_file,
 };
 
 mod path;
 mod raster;
-mod tiger;
+mod svg;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
