@@ -64,7 +64,7 @@ impl Canvas {
             // fill of everything after current index
             let mut covarage_table: Vec<f32> = vec![0.0; self.image.width() as usize];
 
-            // update active segment list?
+            // update active segment list
             // sort by x
             if let Some(_lines) = lines_by_start_y.get(&y) {
                 active_segments.extend(_lines);

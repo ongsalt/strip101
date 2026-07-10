@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, fmt::Debug, time::Instant};
 
 use usvg::Color;
 
@@ -16,8 +16,14 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     if let Some(last) = args.last() {
         if last.ends_with(".svg") {
-            println!("Drawing {last}");
+            let now = Instant::now();
+            println!("Drawing {last}. Starting at {now:.?}");
+         
             draw_svg_file(last);
+            
+            let done = Instant::now();
+            let duration = done - now;
+            println!("Finished in {duration:.?}");
         }
     } else {
         draw_stuff();
