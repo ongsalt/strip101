@@ -122,19 +122,24 @@ impl Canvas {
             }
         }
 
+        let w = self.image.width() as usize;
+        let h = self.image.height() as usize;
+        let buffer = self.image.as_mut();
+
         // contain a sorted (by x) index of `lines`
         let mut active_segments: Vec<usize> = vec![];
 
-        for y in 0..self.image.height() {
+        for y in 0..h {
             // fill of current index
-            let mut fill_table: Vec<f32> = vec![0.0; self.image.width() as usize];
+            let mut fill_table: Vec<f32> = vec![0.0; w];
             // fill of everything after current index
-            let mut covarage_table: Vec<f32> = vec![0.0; self.image.width() as usize];
+            let mut covarage_table: Vec<f32> = vec![0.0; w];
 
             // update active segment list
             // sort by x
             let active_segment_list_start = Instant::now();
-            if let Some(_lines) = lines_by_start_y.get(&y) {
+            let _y = y as u32;
+            if let Some(_lines) = lines_by_start_y.get(&_y) {
                 active_segments.extend(_lines);
                 // its nearly sorted btw
                 active_segments.sort_by_key(|index| lines[*index].min_x());
@@ -148,7 +153,7 @@ impl Canvas {
             let covarage_table_start = Instant::now();
             for line_index in &active_segments {
                 // clip it to y-strip
-                let Some(line) = lines[*line_index].clip_y(y, y + 1) else {
+                let Some(line) = lines[*line_index].clip_y(_y, _y + 1) else {
                     continue;
                 };
 
@@ -172,7 +177,7 @@ impl Canvas {
 
             // remove shit from active segment list
             let active_segment_list_removal_start = Instant::now();
-            if let Some(lines) = lines_by_end_y.get(&y) {
+            if let Some(lines) = lines_by_end_y.get(&_y) {
                 let mut indices: Vec<usize> = vec![];
                 for line in lines {
                     let index = active_segments.iter().position(|it| *it == *line).unwrap();
@@ -187,10 +192,14 @@ impl Canvas {
             active_segment_list_removal_duration += active_segment_list_removal_start.elapsed();
 
             // resolve pass
+            // let row = &mut buffer[y * w * 4..][..w * 4];
+
+            let pixels = &mut buffer[4 * w * y..] [..w * 4];
+
             let resolve_pass_start = Instant::now();
             let mut acc: f32 = 0.0;
-            for x in 0..self.image.width() {
-                let winding = acc + fill_table[x as usize];
+            for (x, px) in pixels.chunks_exact_mut(4).enumerate() {
+                let winding = acc + fill_table[x];
 
                 let opacity = match path.fill_rule {
                     FillRule::NonZero => winding.abs().min(1.0),
@@ -203,14 +212,17 @@ impl Canvas {
                     }
                 };
 
-                let pixel = self.image.get_pixel_mut(x, y);
+                if opacity < f32::EPSILON {
+                    continue;
+                }
+
                 shitty_blend(
                     &[color.red, color.green, color.blue, color_alpha],
-                    &mut pixel.0,
+                    px.try_into().unwrap(),
                     opacity,
                 );
 
-                acc += covarage_table[x as usize];
+                acc += covarage_table[x];
             }
             resolve_pass_duration += resolve_pass_start.elapsed();
         }
