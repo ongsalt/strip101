@@ -103,8 +103,13 @@ impl Canvas {
         let mut lines_by_start_y: HashMap<u32, HashSet<usize>> = HashMap::new();
         let mut lines_by_end_y: HashMap<u32, HashSet<usize>> = HashMap::new();
 
+        let mut min_y: u32 = 0;
+        let mut max_y: u32 = 0;
+
         for (index, line) in lines.iter().enumerate() {
             let (y1, y2) = line.y_bounds();
+            min_y = y1.min(min_y);
+            max_y = y2.max(max_y);
             if let Some(set) = lines_by_start_y.get_mut(&y1) {
                 set.insert(index);
             } else {
@@ -129,17 +134,16 @@ impl Canvas {
         // contain a sorted (by x) index of `lines`
         let mut active_segments: Vec<usize> = vec![];
 
-        for y in 0..h {
-            // fill of current index
-            let mut fill_table: Vec<f32> = vec![0.0; w];
-            // fill of everything after current index
-            let mut covarage_table: Vec<f32> = vec![0.0; w];
+        // fill of current index
+        let mut fill_table: Vec<f32> = vec![0.0; w];
+        // fill of everything after current index
+        let mut covarage_table: Vec<f32> = vec![0.0; w];
 
+        for y in min_y..max_y {
             // update active segment list
             // sort by x
             let active_segment_list_start = Instant::now();
-            let _y = y as u32;
-            if let Some(_lines) = lines_by_start_y.get(&_y) {
+            if let Some(_lines) = lines_by_start_y.get(&y) {
                 active_segments.extend(_lines);
                 // its nearly sorted btw
                 active_segments.sort_by_key(|index| lines[*index].min_x());
@@ -150,34 +154,46 @@ impl Canvas {
                 profile.active_segment_counts.push(active_segments.len());
             }
 
-            let covarage_table_start = Instant::now();
-            for line_index in &active_segments {
-                // clip it to y-strip
-                let Some(line) = lines[*line_index].clip_y(_y, _y + 1) else {
-                    continue;
-                };
+            let mut row_start: u32 = 0;
+            let mut row_end: u32 = 0;
+            let should_skip = active_segments.len() == 0;
 
-                let (x_start, x_end) = line.x_bounds();
-                // println!("line = {line:.?}");
+            if !should_skip {
+                let covarage_table_start = Instant::now();
+                fill_table.fill(0.0);
+                covarage_table.fill(0.0);
 
-                for x in x_start..=x_end {
-                    let Some(line) = line.clip_x(x, x + 1) else {
+                for line_index in &active_segments {
+                    // clip it to y-strip
+                    let Some(line) = lines[*line_index].clip_y(y, y + 1) else {
                         continue;
                     };
 
-                    let dy = line.1.y - line.0.y;
-                    let xmid = (line.0.x + line.1.x) / 2.0 - x as f32;
+                    let (x_start, x_end) = line.x_bounds();
+                    // we can actually produce strip?
+                    row_start = row_start.min(x_start);
+                    row_end = row_end.max(x_end);
+                    // println!("line = {line:.?}");
 
-                    let x = x as usize;
-                    covarage_table[x] += dy;
-                    fill_table[x] += dy * (1.0 - xmid); // trapezoid, see image.png, or https://www.youtube.com/watch?v=B9bztU1sTFA
+                    for x in x_start..=x_end {
+                        let Some(line) = line.clip_x(x, x + 1) else {
+                            continue;
+                        };
+
+                        let dy = line.1.y - line.0.y;
+                        let xmid = (line.0.x + line.1.x) / 2.0 - x as f32;
+
+                        let x = x as usize;
+                        covarage_table[x] += dy;
+                        fill_table[x] += dy * (1.0 - xmid); // trapezoid, see https://www.youtube.com/watch?v=B9bztU1sTFA
+                    }
                 }
+                covarage_table_generation_duration += covarage_table_start.elapsed();
             }
-            covarage_table_generation_duration += covarage_table_start.elapsed();
 
             // remove shit from active segment list
             let active_segment_list_removal_start = Instant::now();
-            if let Some(lines) = lines_by_end_y.get(&_y) {
+            if let Some(lines) = lines_by_end_y.get(&y) {
                 let mut indices: Vec<usize> = vec![];
                 for line in lines {
                     let index = active_segments.iter().position(|it| *it == *line).unwrap();
@@ -191,40 +207,44 @@ impl Canvas {
             }
             active_segment_list_removal_duration += active_segment_list_removal_start.elapsed();
 
-            // resolve pass
-            // let row = &mut buffer[y * w * 4..][..w * 4];
+            if !should_skip {
+                // resolve pass
+                let pixels = &mut buffer[4 * w * y as usize..][..w * 4];
+                let resolve_pass_start = Instant::now();
+                let mut acc: f32 = 0.0;
+                for (x, px) in pixels
+                    .chunks_exact_mut(4)
+                    .enumerate()
+                    .take(row_end as usize + 1)
+                    .skip(row_start as usize)
+                {
+                    let winding = acc + fill_table[x];
 
-            let pixels = &mut buffer[4 * w * y..] [..w * 4];
-
-            let resolve_pass_start = Instant::now();
-            let mut acc: f32 = 0.0;
-            for (x, px) in pixels.chunks_exact_mut(4).enumerate() {
-                let winding = acc + fill_table[x];
-
-                let opacity = match path.fill_rule {
-                    FillRule::NonZero => winding.abs().min(1.0),
-                    FillRule::EvenOdd => {
-                        if winding as u32 % 2 == 0 {
-                            winding % 1.0
-                        } else {
-                            1.0 - (winding % 1.0)
+                    let opacity = match path.fill_rule {
+                        FillRule::NonZero => winding.abs().min(1.0),
+                        FillRule::EvenOdd => {
+                            if winding as u32 % 2 == 0 {
+                                winding % 1.0
+                            } else {
+                                1.0 - (winding % 1.0)
+                            }
                         }
+                    };
+
+                    if opacity < f32::EPSILON {
+                        continue;
                     }
-                };
 
-                if opacity < f32::EPSILON {
-                    continue;
+                    shitty_blend(
+                        &[color.red, color.green, color.blue, color_alpha],
+                        px.try_into().unwrap(),
+                        opacity,
+                    );
+
+                    acc += covarage_table[x];
                 }
-
-                shitty_blend(
-                    &[color.red, color.green, color.blue, color_alpha],
-                    px.try_into().unwrap(),
-                    opacity,
-                );
-
-                acc += covarage_table[x];
+                resolve_pass_duration += resolve_pass_start.elapsed();
             }
-            resolve_pass_duration += resolve_pass_start.elapsed();
         }
 
         if let Some(profile) = &mut self.profile {
