@@ -6,6 +6,7 @@
   - still need to calculate winding number of stuff outside of this
   - when its outside of viewport tile size can be much larger, arbitrary h
 - think about arbitrary clipping
+- nuke HashMap and do proper tiling
 
 # References
 - [Spare strips](https://ethz.ch/content/dam/ethz/special-interest/infk/inst-pls/plf-dam/documents/StudentProjects/MasterTheses/2025-Laurenz-Thesis.pdf)

@@ -129,11 +129,19 @@ impl Canvas {
                         let xmid = (line.0.x + line.1.x) / 2.0 - x as f32;
 
                         let x = x as usize;
-                        covarage_table[x] += dy;
-                        fill_table[x] += dy * (1.0 - xmid); // trapezoid, see https://www.youtube.com/watch?v=B9bztU1sTFA
+                        debug_assert!(x < w);
+                        // SAFETY: x in [x_start, x_end], clipped to the y-strip and
+                        // bounded by image width; tables are sized w.
+                        unsafe {
+                            *covarage_table.get_unchecked_mut(x) += dy;
+                            // trapezoid, see https://www.youtube.com/watch?v=B9bztU1sTFA
+                            *fill_table.get_unchecked_mut(x) += dy * (1.0 - xmid);
+                        }
                     }
                 }
             }
+
+            row_end = row_end.min(w as u32);
 
             // remove shit from active segment list
             if let Some(lines) = lines_by_end_y.get(&y) {
@@ -155,8 +163,17 @@ impl Canvas {
                 let mut acc: f32 = 0.0;
                 let mut x = row_start;
                 while x <= row_end {
-                    let px = &mut pixels[4 * x as usize..][..4];
-                    let winding = acc + fill_table[x as usize];
+                    let xu = x as usize;
+                    debug_assert!(xu < w);
+                    // SAFETY: x in [row_start, row_end] <= w; pixels is w*4 long,
+                    // fill/covarage tables are sized w.
+                    let px: &mut [u8; 4] = unsafe {
+                        pixels
+                            .get_unchecked_mut(4 * xu..4 * xu + 4)
+                            .try_into()
+                            .unwrap()
+                    };
+                    let winding = acc + unsafe { *fill_table.get_unchecked(xu) };
 
                     let opacity = match path.fill_rule {
                         FillRule::NonZero => winding.abs().min(1.0),
@@ -176,10 +193,11 @@ impl Canvas {
 
                     shitty_blend(
                         &[color.red, color.green, color.blue, color_alpha],
-                        px.try_into().unwrap(),
+                        px,
                         opacity,
                     );
-                    acc += covarage_table[x as usize];
+                    // SAFETY: same bound as above.
+                    acc += unsafe { *covarage_table.get_unchecked(xu) };
                     x += 1;
                 }
             }
