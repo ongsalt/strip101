@@ -32,19 +32,19 @@ impl Canvas {
         self.fill_scanline(path, color, color_alpha)
     }
 
+    /// sort line into 4x4 tile, break it if needed
+    /// merge those into strips
+    /// calculate each strip winding number (not float)
+    /// calculate pixel level winding number with aa
+    ///     - this can easily be put in compute shader, is it worth it tho
+    /// generat draw commands: Fill for inside area and AntialiasedFill(coverageId) for strip
+    /// gpu...
     fn fill_tile(&mut self, path: &Path, color: &Color, color_alpha: u8) {
         let mut lines = path.break_into_lines();
         apply_transform(&mut lines, self.scale, self.offset);
 
-        // sort line into 4x4 tile, break it if needed 
-        // merge those into strips
-        // calculate each strip winding number (not float)
-        // calculate pixel level winding number with aa
-        // generat draw commands: Fill for inside area and AntialiasedFill(coverageId) for strip
-        // gpu...
-
-        // must be 2d
-        // let mut coverage_table: Vec<f32> = vec![0.0; ]
+        /// must be 2d
+        let mut coverage_table: Vec<f32> = vec![0.0; 100];
     }
 
     fn fill_scanline(&mut self, path: &Path, color: &Color, color_alpha: u8) {
@@ -153,9 +153,10 @@ impl Canvas {
                 // resolve pass
                 let pixels = &mut buffer[4 * w * y as usize..][..w * 4];
                 let mut acc: f32 = 0.0;
-                for x in row_start as usize..=row_end as usize {
-                    let px = &mut pixels[4 * x..][..4];
-                    let winding = acc + fill_table[x];
+                let mut x = row_start;
+                while x <= row_end {
+                    let px = &mut pixels[4 * x as usize..][..4];
+                    let winding = acc + fill_table[x as usize];
 
                     let opacity = match path.fill_rule {
                         FillRule::NonZero => winding.abs().min(1.0),
@@ -169,6 +170,7 @@ impl Canvas {
                     };
 
                     if opacity < f32::EPSILON {
+                        x += 1;
                         continue;
                     }
 
@@ -177,8 +179,8 @@ impl Canvas {
                         px.try_into().unwrap(),
                         opacity,
                     );
-
-                    acc += covarage_table[x];
+                    acc += covarage_table[x as usize];
+                    x += 1;
                 }
             }
         }
@@ -198,12 +200,10 @@ struct Tile {
     x: u16,
     y: u16,
     has_top_intersection: bool,
-    line: Line
+    line: Line,
 }
 
-struct TileCoverage {
-
-}
+struct TileCoverage {}
 
 enum FillCommand {
     Opaque,

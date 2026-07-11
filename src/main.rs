@@ -20,7 +20,7 @@ fn main() {
             .find(|a| a.ends_with(".svg"))
             .map(|s| s.as_str())
             .unwrap_or("tiger.svg");
-        bench_svg_file(svg, 100);
+        bench_svg_file(svg, 1000);
     } else if let Some(last) = args.last() {
         if last.ends_with(".svg") {
             let now = Instant::now();
