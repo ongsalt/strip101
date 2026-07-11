@@ -27,8 +27,7 @@ pub fn draw_svg_file(filename: &str) {
 
     let tree = usvg::Tree::from_str(&svg, &opt).unwrap();
 
-    let mut canvas = render_svg(&tree);
-    canvas.dump_profile();
+    let canvas = render_svg(&tree);
     canvas.save("tiger.png");
 }
 
@@ -45,26 +44,20 @@ pub fn bench_svg_file(filename: &str, iterations: usize) {
     let mut total = std::time::Duration::ZERO;
     let mut min = std::time::Duration::MAX;
     let mut max = std::time::Duration::ZERO;
-    let mut break_into_lines_total = std::time::Duration::ZERO;
 
     for _ in 0..iterations {
         let start = std::time::Instant::now();
-        let canvas = render_svg(&tree);
+        let _ = render_svg(&tree);
         let elapsed = start.elapsed();
 
         total += elapsed;
         min = min.min(elapsed);
         max = max.max(elapsed);
-
-        if let Some(profile) = canvas.profile() {
-            break_into_lines_total += profile.break_into_lines;
-        }
     }
 
     println!(
-        "bench {filename} x{iterations}: total={total:?}, avg={:?}, min={min:?}, max={max:?}, break_into_lines_avg={:?}",
+        "bench {filename} x{iterations}: total={total:?}, avg={:?}, min={min:?}, max={max:?}",
         total / iterations as u32,
-        break_into_lines_total / iterations as u32,
     );
 }
 

@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::time::{Duration, Instant};
 
 use image::{ImageFormat, RgbaImage};
 use usvg::{Color, FillRule};
@@ -10,18 +9,6 @@ pub struct Canvas {
     pub image: RgbaImage,
     pub scale: f32,
     pub offset: Point,
-    profile: Option<ScanlineProfile>,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct ScanlineProfile {
-    pub fills: u64,
-    pub break_into_lines: Duration,
-    pub active_segment_list: Duration,
-    pub active_segment_list_removal: Duration,
-    pub covarage_table_generation: Duration,
-    pub resolve_pass: Duration,
-    pub active_segment_counts: Vec<usize>,
 }
 
 impl Canvas {
@@ -32,7 +19,6 @@ impl Canvas {
             image,
             scale: 1.0,
             offset: point(0.0, 0.0),
-            profile: Some(ScanlineProfile::default()),
         }
     }
 
@@ -42,63 +28,10 @@ impl Canvas {
             .unwrap();
     }
 
-    pub fn profile(&self) -> Option<&ScanlineProfile> {
-        self.profile.as_ref()
-    }
-
-    pub fn dump_profile(&mut self) -> Option<ScanlineProfile> {
-        if let Some(profile) = self.profile.take() {
-            let (active_min, active_max, active_avg) = if profile.active_segment_counts.is_empty() {
-                (0, 0, 0.0)
-            } else {
-                let mut min = usize::MAX;
-                let mut max = 0usize;
-                let mut sum = 0usize;
-
-                for count in &profile.active_segment_counts {
-                    min = min.min(*count);
-                    max = max.max(*count);
-                    sum += *count;
-                }
-
-                (
-                    min,
-                    max,
-                    sum as f64 / profile.active_segment_counts.len() as f64,
-                )
-            };
-
-            eprintln!(
-                "fill_scanline profile: fills={}, break_into_lines={:?}, active_segment_list={:?}, active_segment_list_removal={:?}, covarage_table_generation={:?}, resolve_pass={:?}, active_segment_count[min={}, max={}, avg={:.2}, samples={}]",
-                profile.fills,
-                profile.break_into_lines,
-                profile.active_segment_list,
-                profile.active_segment_list_removal,
-                profile.covarage_table_generation,
-                profile.resolve_pass,
-                active_min,
-                active_max,
-                active_avg,
-                profile.active_segment_counts.len(),
-            );
-
-            Some(profile)
-        } else {
-            None
-        }
-    }
-
     pub fn fill_scanline(&mut self, path: &Path, color: &Color, color_alpha: u8) {
-        let break_into_lines_start = Instant::now();
         let mut lines = path.break_into_lines();
-        let break_into_lines_duration = break_into_lines_start.elapsed();
         apply_transform(&mut lines, self.scale, self.offset);
         // println!("lines: {lines:.?}");
-
-        let mut active_segment_list_duration = Duration::ZERO;
-        let mut active_segment_list_removal_duration = Duration::ZERO;
-        let mut covarage_table_generation_duration = Duration::ZERO;
-        let mut resolve_pass_duration = Duration::ZERO;
 
         let mut lines_by_start_y: HashMap<u32, HashSet<usize>> = HashMap::new();
         let mut lines_by_end_y: HashMap<u32, HashSet<usize>> = HashMap::new();
@@ -139,19 +72,14 @@ impl Canvas {
         // fill of everything after current index
         let mut covarage_table: Vec<f32> = vec![0.0; w];
 
-        for y in min_y..max_y {
+        for y in min_y..=max_y {
             // update active segment list
             // sort by x
-            let active_segment_list_start = Instant::now();
             if let Some(_lines) = lines_by_start_y.get(&y) {
                 active_segments.extend(_lines);
                 // its nearly sorted btw
                 active_segments.sort_by_key(|index| lines[*index].min_x());
                 // println!("active_segments = {active_segments:.?}");
-            }
-            active_segment_list_duration += active_segment_list_start.elapsed();
-            if let Some(profile) = &mut self.profile {
-                profile.active_segment_counts.push(active_segments.len());
             }
 
             let mut row_start: u32 = 0;
@@ -159,7 +87,6 @@ impl Canvas {
             let should_skip = active_segments.len() == 0;
 
             if !should_skip {
-                let covarage_table_start = Instant::now();
                 fill_table.fill(0.0);
                 covarage_table.fill(0.0);
 
@@ -188,11 +115,9 @@ impl Canvas {
                         fill_table[x] += dy * (1.0 - xmid); // trapezoid, see https://www.youtube.com/watch?v=B9bztU1sTFA
                     }
                 }
-                covarage_table_generation_duration += covarage_table_start.elapsed();
             }
 
             // remove shit from active segment list
-            let active_segment_list_removal_start = Instant::now();
             if let Some(lines) = lines_by_end_y.get(&y) {
                 let mut indices: Vec<usize> = vec![];
                 for line in lines {
@@ -205,19 +130,13 @@ impl Canvas {
                     active_segments.remove(*index);
                 }
             }
-            active_segment_list_removal_duration += active_segment_list_removal_start.elapsed();
 
             if !should_skip {
                 // resolve pass
                 let pixels = &mut buffer[4 * w * y as usize..][..w * 4];
-                let resolve_pass_start = Instant::now();
                 let mut acc: f32 = 0.0;
-                for (x, px) in pixels
-                    .chunks_exact_mut(4)
-                    .enumerate()
-                    .take(row_end as usize + 1)
-                    .skip(row_start as usize)
-                {
+                for x in row_start as usize..=row_end as usize {
+                    let px = &mut pixels[4 * x..][..4];
                     let winding = acc + fill_table[x];
 
                     let opacity = match path.fill_rule {
@@ -243,17 +162,7 @@ impl Canvas {
 
                     acc += covarage_table[x];
                 }
-                resolve_pass_duration += resolve_pass_start.elapsed();
             }
-        }
-
-        if let Some(profile) = &mut self.profile {
-            profile.fills += 1;
-            profile.break_into_lines += break_into_lines_duration;
-            profile.active_segment_list += active_segment_list_duration;
-            profile.active_segment_list_removal += active_segment_list_removal_duration;
-            profile.covarage_table_generation += covarage_table_generation_duration;
-            profile.resolve_pass += resolve_pass_duration;
         }
 
         // println!("active_segments => {active_segments:.?}");
@@ -286,22 +195,33 @@ struct BandOutput {}
 
 /// src-over composite of `source` onto `dest`, both straight (non-premultiplied) RGBA.
 /// `t` scales the source alpha, e.g. pixel coverage.
-fn shitty_blend(source: &[u8; 4], dest: &mut [u8; 4], t: f32) {
-    let src_a = (source[3] as f32) / 255.0 * t.clamp(0.0, 1.0);
-    let dst_a = (dest[3] as f32) / 255.0;
-    let out_a = src_a + dst_a * (1.0 - src_a);
+#[inline(always)]
+fn shitty_blend(source: &[u8; 4], dest: &mut [u8; 4], opacity: f32) {
+    let src_a = source[3] as u32 * (opacity * 255.0) as u32 / 255;
 
-    if out_a <= f32::EPSILON {
+    if src_a == 255 {
+        dest[0] = source[0];
+        dest[1] = source[1];
+        dest[2] = source[2];
+        dest[3] = source[3];
+        return;
+    }
+
+    let dst_a = dest[3] as u32;
+    let out_a = src_a + dst_a * (255 - src_a) / 255;
+
+    if out_a == 0 {
         *dest = [0, 0, 0, 0];
         return;
     }
 
-    for i in 0..3 {
-        let src = (source[i] as f32) / 255.0;
-        let dst = (dest[i] as f32) / 255.0;
-        let out = (src * src_a + dst * dst_a * (1.0 - src_a)) / out_a;
-        dest[i] = (out * 255.0 + 0.5) as u8;
+    for c in 0..3 {
+        let s = source[c] as u32;
+        let d = dest[c] as u32;
+        let out = (s * src_a + d * dst_a * (255 - src_a) / 255) / out_a;
+
+        dest[c] = out as u8;
     }
 
-    dest[3] = (out_a * 255.0 + 0.5) as u8;
+    dest[3] = out_a as u8;
 }
