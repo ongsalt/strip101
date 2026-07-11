@@ -554,4 +554,43 @@ impl Line {
 
         Some(Line(self.sample(enter), self.sample(exit)))
     }
+
+    pub fn bounds(&self) -> Rect {
+        let (x1, x2) = self.x_bounds();
+        let (y1, y2) = self.y_bounds();
+        Rect { x1, y1, x2, y2 }
+    }
+}
+
+pub struct Rect {
+    pub x1: u32,
+    pub y1: u32,
+    pub x2: u32,
+    pub y2: u32,
+}
+
+impl Rect {
+    /// start must be less that ends
+    pub fn new(x1: u32, y1: u32, x2: u32, y2: u32) -> Self {
+        Self { x1, y1, x2, y2 }
+    }
+
+    pub fn from_points(a: Point, b: Point) -> Self {
+        let x1 = a.x.min(b.x) as u32;
+        let y1 = a.y.min(b.y) as u32;
+        let x2 = a.x.max(b.x) as u32;
+        let y2 = a.y.max(b.y) as u32;
+        Self { x1, y1, x2, y2 }
+    }
+
+    pub fn intersect(&self, other: &Self) -> Option<Self> {
+        let x1 = self.x1.max(other.x1);
+        let y1 = self.y1.max(other.y1);
+        let x2 = self.x2.min(other.x2);
+        let y2 = self.y2.min(other.y2);
+        if x1 > x2 || y1 > y2 {
+            return None;
+        }
+        Some(Self { x1, x2, y1, y2 })
+    }
 }

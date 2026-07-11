@@ -71,7 +71,7 @@ fn walk(parent: &usvg::Group, canvas: &mut Canvas) {
                 if let Some(fill) = p.fill() {
                     match fill.paint() {
                         usvg::Paint::Color(color) => {
-                            canvas.fill_scanline(&path, color, fill.opacity().to_u8());
+                            canvas.fill(&path, color, fill.opacity().to_u8());
                         }
                         usvg::Paint::LinearGradient(_) => {}
                         usvg::Paint::RadialGradient(_) => {}

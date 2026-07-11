@@ -28,7 +28,26 @@ impl Canvas {
             .unwrap();
     }
 
-    pub fn fill_scanline(&mut self, path: &Path, color: &Color, color_alpha: u8) {
+    pub fn fill(&mut self, path: &Path, color: &Color, color_alpha: u8) {
+        self.fill_scanline(path, color, color_alpha)
+    }
+
+    fn fill_tile(&mut self, path: &Path, color: &Color, color_alpha: u8) {
+        let mut lines = path.break_into_lines();
+        apply_transform(&mut lines, self.scale, self.offset);
+
+        // sort line into 4x4 tile, break it if needed 
+        // merge those into strips
+        // calculate each strip winding number (not float)
+        // calculate pixel level winding number with aa
+        // generat draw commands: Fill for inside area and AntialiasedFill(coverageId) for strip
+        // gpu...
+
+        // must be 2d
+        // let mut coverage_table: Vec<f32> = vec![0.0; ]
+    }
+
+    fn fill_scanline(&mut self, path: &Path, color: &Color, color_alpha: u8) {
         let mut lines = path.break_into_lines();
         apply_transform(&mut lines, self.scale, self.offset);
         // println!("lines: {lines:.?}");
@@ -61,7 +80,6 @@ impl Canvas {
         }
 
         let w = self.image.width() as usize;
-        let h = self.image.height() as usize;
         let buffer = self.image.as_mut();
 
         // contain a sorted (by x) index of `lines`
@@ -164,11 +182,6 @@ impl Canvas {
                 }
             }
         }
-
-        // println!("active_segments => {active_segments:.?}");
-        // println!("lines.len() = {:.?}", lines.len());
-        // println!("lines = {lines:.?}");
-        // println!("lines_by_end_y => {lines_by_end_y:.?}");
     }
 }
 
@@ -179,19 +192,23 @@ fn apply_transform(lines: &mut Vec<Line>, scale: f32, offset: Point) {
     }
 }
 
-pub fn raster_band(path: &Path, image: &mut RgbaImage) {
-    // we probably need a custom image type just for multithreading
-
-    // break image into h=16px bands, put each line segment into it
-    let band_h = 16;
-    let mut band_count = image.height() / band_h;
-    let last_band_height = image.height() % band_h;
-    if last_band_height != 0 {
-        band_count += 1;
-    }
+// straight from the paper
+struct Tile {
+    // 2^18 range is probably enoght
+    x: u16,
+    y: u16,
+    has_top_intersection: bool,
+    line: Line
 }
 
-struct BandOutput {}
+struct TileCoverage {
+
+}
+
+enum FillCommand {
+    Opaque,
+    Alpha,
+}
 
 /// src-over composite of `source` onto `dest`, both straight (non-premultiplied) RGBA.
 /// `t` scales the source alpha, e.g. pixel coverage.
