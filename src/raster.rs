@@ -14,14 +14,14 @@ pub struct Canvas {
 }
 
 #[derive(Debug, Default, Clone)]
-struct ScanlineProfile {
-    fills: u64,
-    break_into_lines: Duration,
-    active_segment_list: Duration,
-    active_segment_list_removal: Duration,
-    covarage_table_generation: Duration,
-    resolve_pass: Duration,
-    active_segment_counts: Vec<usize>,
+pub struct ScanlineProfile {
+    pub fills: u64,
+    pub break_into_lines: Duration,
+    pub active_segment_list: Duration,
+    pub active_segment_list_removal: Duration,
+    pub covarage_table_generation: Duration,
+    pub resolve_pass: Duration,
+    pub active_segment_counts: Vec<usize>,
 }
 
 impl Canvas {
@@ -42,8 +42,12 @@ impl Canvas {
             .unwrap();
     }
 
-    pub fn dump_profile(&self) {
-        if let Some(profile) = &self.profile {
+    pub fn profile(&self) -> Option<&ScanlineProfile> {
+        self.profile.as_ref()
+    }
+
+    pub fn dump_profile(&mut self) -> Option<ScanlineProfile> {
+        if let Some(profile) = self.profile.take() {
             let (active_min, active_max, active_avg) = if profile.active_segment_counts.is_empty() {
                 (0, 0, 0.0)
             } else {
@@ -77,6 +81,10 @@ impl Canvas {
                 active_avg,
                 profile.active_segment_counts.len(),
             );
+
+            Some(profile)
+        } else {
+            None
         }
     }
 

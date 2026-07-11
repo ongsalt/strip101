@@ -5,7 +5,7 @@ use usvg::Color;
 use crate::{
     path::{Path, point},
     raster::Canvas,
-    svg::draw_svg_file,
+    svg::{bench_svg_file, draw_svg_file},
 };
 
 mod path;
@@ -14,13 +14,20 @@ mod svg;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if let Some(last) = args.last() {
+    if args.iter().any(|a| a == "--bench") {
+        let svg = args
+            .iter()
+            .find(|a| a.ends_with(".svg"))
+            .map(|s| s.as_str())
+            .unwrap_or("tiger.svg");
+        bench_svg_file(svg, 100);
+    } else if let Some(last) = args.last() {
         if last.ends_with(".svg") {
             let now = Instant::now();
             println!("Drawing {last}. Starting at {now:.?}");
-         
+
             draw_svg_file(last);
-            
+
             let done = Instant::now();
             let duration = done - now;
             println!("Finished in {duration:.?}");
