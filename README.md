@@ -1,3 +1,12 @@
+# What is this
+me learning how to render vector graphics
+
+# Useful command 
+```
+cargo run --release -- tiger.svg
+cargo run --release -- --bench tiger.svg
+```
+
 # Todo
 - stroke
 - correct even odd fill rule
@@ -15,3 +24,6 @@
 - [Fast cubic Bézier curve offsetting.
 ](https://gasiulis.name/cubic-curve-offsetting/)
 - [The Scanline Sweeper: A Glyph Rendering Algorithm](https://www.youtube.com/watch?v=B9bztU1sTFA)
+
+
+tiger.svg is from wikipedia commons

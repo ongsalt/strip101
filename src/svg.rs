@@ -1,4 +1,4 @@
-use std::{fs, ops::Deref};
+use std::{fs, ops::Deref, time::Instant};
 
 use image::{ImageFormat, Rgba32FImage, RgbaImage};
 use usvg::{Color, FillRule};
@@ -10,7 +10,6 @@ use crate::{
 
 use usvg::tiny_skia_path::PathSegment as UPathSegment;
 
-
 fn render_svg(tree: &usvg::Tree) -> Canvas {
     let mut canvas = Canvas::new(1200, 1200);
     canvas.offset = point(400.0, 400.0);
@@ -21,14 +20,24 @@ fn render_svg(tree: &usvg::Tree) -> Canvas {
 
 pub fn draw_svg_file(filename: &str) {
     let svg = fs::read_to_string(filename).unwrap();
+    let name = filename.split(".").next().unwrap();
+
     let opt = usvg::Options {
         ..usvg::Options::default()
     };
 
     let tree = usvg::Tree::from_str(&svg, &opt).unwrap();
 
+    let now = Instant::now();
+    println!("Drawing {filename} at 1200x1200 scale=2.0 offset=(400.0, 400.0)");
+
     let canvas = render_svg(&tree);
-    canvas.save("tiger.png");
+
+    let done = Instant::now();
+    let duration = done - now;
+    println!("Finished in {duration:.?}");
+
+    canvas.save(&format!("{name}.png"));
 }
 
 pub fn bench_svg_file(filename: &str, iterations: usize) {
