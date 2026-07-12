@@ -5,6 +5,7 @@ me learning how to render vector graphics
 ```
 cargo run --release -- tiger.svg
 cargo run --release -- --bench tiger.svg
+cargo run --release -- --vello tiger.svg
 ```
 
 # Todo

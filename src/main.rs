@@ -55,7 +55,6 @@ fn draw_stuff() {
 
     let color = Color::new_rgb(255, 0, 0);
     canvas.fill(&path, &color, 128);
-    // fill_scanline(&path, &mut img, &color);
 
     canvas.save("scanline.png");
 }
