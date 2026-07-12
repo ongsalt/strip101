@@ -35,6 +35,7 @@ impl Canvas {
     /// sort line into 4x4 tile, break it if needed
     /// merge those into strips
     /// calculate each strip winding number (not float)
+    /// 
     /// calculate pixel level winding number with aa
     ///     - this can easily be put in compute shader, is it worth it tho
     /// generat draw commands: Fill for inside area and AntialiasedFill(coverageId) for strip

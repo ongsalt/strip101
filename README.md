@@ -27,3 +27,9 @@ cargo run --release -- --bench tiger.svg
 
 
 tiger.svg is from wikipedia commons
+
+
+# To checkout
+- vger
+- rive renderer
+- pathfinder

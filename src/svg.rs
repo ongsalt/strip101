@@ -10,12 +10,27 @@ use crate::{
 
 use usvg::tiny_skia_path::PathSegment as UPathSegment;
 
+const WIDTH: u32 = 1200;
+const HEIGHT: u32 = 1200;
+
 fn render_svg(tree: &usvg::Tree) -> Canvas {
-    let mut canvas = Canvas::new(1200, 1200);
-    canvas.offset = point(400.0, 400.0);
-    canvas.scale = 2.0;
+    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    let (scale, offset) = fit(tree);
+    canvas.offset = offset;
+    canvas.scale = scale;
     walk(tree.root(), &mut canvas);
     canvas
+}
+
+/// fit the svg into the canvas, centered
+fn fit(tree: &usvg::Tree) -> (f32, Point) {
+    let size = tree.size();
+    let scale = (WIDTH as f32 / size.width()).min(HEIGHT as f32 / size.height());
+    let offset = point(
+        (WIDTH as f32 - size.width() * scale) / 2.0,
+        (HEIGHT as f32 - size.height() * scale) / 2.0,
+    );
+    (scale, offset)
 }
 
 pub fn draw_svg_file(filename: &str) {
@@ -29,7 +44,8 @@ pub fn draw_svg_file(filename: &str) {
     let tree = usvg::Tree::from_str(&svg, &opt).unwrap();
 
     let now = Instant::now();
-    println!("Drawing {filename} at 1200x1200 scale=2.0 offset=(400.0, 400.0)");
+    let (scale, _) = fit(&tree);
+    println!("Drawing {filename} at {WIDTH}x{HEIGHT} scale={scale:.3}");
 
     let canvas = render_svg(&tree);
 
@@ -98,13 +114,21 @@ fn walk(parent: &usvg::Group, canvas: &mut Canvas) {
 
 impl From<&usvg::Path> for Path {
     fn from(value: &usvg::Path) -> Self {
+        // path data is in local space, so bake in the accumulated group transforms
+        let t = value.abs_transform();
+        let map = |p: usvg::tiny_skia_path::Point| {
+            let mut p = p;
+            t.map_point(&mut p);
+            Point::from(p)
+        };
+
         let mut path = Path::new();
         for segment in value.data().segments() {
             match segment {
-                UPathSegment::MoveTo(p) => path.move_to(p.into()),
-                UPathSegment::LineTo(p) => path.line_to(p.into()),
-                UPathSegment::QuadTo(c1, p) => path.quad_to(p.into(), c1.into()),
-                UPathSegment::CubicTo(c1, c2, p) => path.cubic_to(p.into(), c1.into(), c2.into()),
+                UPathSegment::MoveTo(p) => path.move_to(map(p)),
+                UPathSegment::LineTo(p) => path.line_to(map(p)),
+                UPathSegment::QuadTo(c1, p) => path.quad_to(map(p), map(c1)),
+                UPathSegment::CubicTo(c1, c2, p) => path.cubic_to(map(p), map(c1), map(c2)),
                 UPathSegment::Close => path.close(),
             };
         }

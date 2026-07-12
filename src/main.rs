@@ -6,21 +6,26 @@ use crate::{
     path::{Path, point},
     raster::Canvas,
     svg::{bench_svg_file, draw_svg_file},
+    vello::draw_svg_file_vello,
 };
 
 mod path;
 mod raster;
 mod svg;
+mod vello;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.iter().any(|a| a == "--bench") {
-        let svg = args
-            .iter()
-            .find(|a| a.ends_with(".svg"))
-            .map(|s| s.as_str())
-            .unwrap_or("tiger.svg");
-        bench_svg_file(svg, 1000);
+    let svg_arg = args
+        .iter()
+        .find(|a| a.ends_with(".svg"))
+        .map(|s| s.as_str())
+        .unwrap_or("tiger.svg");
+
+    if args.iter().any(|a| a == "--vello") {
+        draw_svg_file_vello(svg_arg);
+    } else if args.iter().any(|a| a == "--bench") {
+        bench_svg_file(svg_arg, 1000);
     } else if let Some(last) = args.last() {
         if last.ends_with(".svg") {
             draw_svg_file(last);
