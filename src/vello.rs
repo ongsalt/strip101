@@ -9,22 +9,19 @@ use vello_cpu::{
 
 use usvg::tiny_skia_path::PathSegment as UPathSegment;
 
-pub fn draw_svg_file_vello(filename: &str) {
+pub fn draw_svg_file_vello(filename: &str, scale: f32) {
     let svg = fs::read_to_string(filename).unwrap();
     let name = filename.split('.').next().unwrap();
 
     let opt = usvg::Options::default();
     let tree = usvg::Tree::from_str(&svg, &opt).unwrap();
 
-    let width: u16 = 1200;
-    let height: u16 = 1200;
-
-    // fit the svg into the canvas, centered
+    // render at viewbox size scaled, rounded up to whole pixels
     let size = tree.size();
-    let scale = (width as f64 / size.width() as f64).min(height as f64 / size.height() as f64);
-    let tx = (width as f64 - size.width() as f64 * scale) / 2.0;
-    let ty = (height as f64 - size.height() as f64 * scale) / 2.0;
-    let view = Affine::translate((tx, ty)) * Affine::scale(scale);
+    let scale = scale as f64;
+    let width = (size.width() as f64 * scale).ceil() as u16;
+    let height = (size.height() as f64 * scale).ceil() as u16;
+    let view = Affine::scale(scale);
 
     println!("Drawing {filename} with vello_cpu at {width}x{height} scale={scale:.3}");
     let now = Instant::now();

@@ -9,29 +9,27 @@ use crate::{
 
 use usvg::tiny_skia_path::PathSegment as UPathSegment;
 
-const WIDTH: u32 = 1200;
-const HEIGHT: u32 = 1200;
-
-fn render_svg(tree: &usvg::Tree) -> Canvas {
-    let mut canvas = Canvas::new(WIDTH, HEIGHT);
-    let (scale, offset) = fit(tree);
-    canvas.transform = Transform { offset, scale };
+fn render_svg(tree: &usvg::Tree, scale: f32) -> Canvas {
+    let (width, height) = scaled_size(tree, scale);
+    let mut canvas = Canvas::new(width, height);
+    canvas.transform = Transform {
+        offset: point(0.0, 0.0),
+        scale,
+    };
     walk(tree.root(), &mut canvas);
     canvas
 }
 
-/// fit the svg into the canvas, centered
-fn fit(tree: &usvg::Tree) -> (f32, Point) {
+/// viewbox size scaled, rounded up to whole pixels
+fn scaled_size(tree: &usvg::Tree, scale: f32) -> (u32, u32) {
     let size = tree.size();
-    let scale = (WIDTH as f32 / size.width()).min(HEIGHT as f32 / size.height());
-    let offset = point(
-        (WIDTH as f32 - size.width() * scale) / 2.0,
-        (HEIGHT as f32 - size.height() * scale) / 2.0,
-    );
-    (scale, offset)
+    (
+        (size.width() * scale).ceil() as u32,
+        (size.height() * scale).ceil() as u32,
+    )
 }
 
-pub fn draw_svg_file(filename: &str) {
+pub fn draw_svg_file(filename: &str, scale: f32) {
     let svg = fs::read_to_string(filename).unwrap();
     let name = filename.split(".").next().unwrap();
 
@@ -42,10 +40,10 @@ pub fn draw_svg_file(filename: &str) {
     let tree = usvg::Tree::from_str(&svg, &opt).unwrap();
 
     let now = Instant::now();
-    let (scale, _) = fit(&tree);
-    println!("Drawing {filename} at {WIDTH}x{HEIGHT} scale={scale:.3}");
+    let (width, height) = scaled_size(&tree, scale);
+    println!("Drawing {filename} at {width}x{height} scale={scale:.3}");
 
-    let canvas = render_svg(&tree);
+    let canvas = render_svg(&tree, scale);
 
     let done = Instant::now();
     let duration = done - now;
@@ -54,7 +52,7 @@ pub fn draw_svg_file(filename: &str) {
     canvas.save(&format!("{name}.png"));
 }
 
-pub fn bench_svg_file(filename: &str, iterations: usize) {
+pub fn bench_svg_file(filename: &str, iterations: usize, scale: f32) {
     let svg = fs::read_to_string(filename).unwrap();
     let opt = usvg::Options {
         ..usvg::Options::default()
@@ -62,7 +60,7 @@ pub fn bench_svg_file(filename: &str, iterations: usize) {
     let tree = usvg::Tree::from_str(&svg, &opt).unwrap();
 
     // warmup
-    let _ = render_svg(&tree);
+    let _ = render_svg(&tree, scale);
 
     let mut total = std::time::Duration::ZERO;
     let mut min = std::time::Duration::MAX;
@@ -70,7 +68,7 @@ pub fn bench_svg_file(filename: &str, iterations: usize) {
 
     for _ in 0..iterations {
         let start = std::time::Instant::now();
-        let _ = render_svg(&tree);
+        let _ = render_svg(&tree, scale);
         let elapsed = start.elapsed();
 
         total += elapsed;

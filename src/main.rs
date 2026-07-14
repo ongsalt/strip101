@@ -1,5 +1,4 @@
-use std::{env, fmt::Debug, time::Instant};
-
+use clap::Parser;
 use usvg::Color;
 
 use crate::{
@@ -14,22 +13,33 @@ mod raster;
 mod svg;
 mod vello;
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    let svg_arg = args
-        .iter()
-        .find(|a| a.ends_with(".svg"))
-        .map(|s| s.as_str())
-        .unwrap_or("tiger.svg");
+#[derive(Parser)]
+struct Args {
+    /// SVG file to render
+    svg: Option<String>,
 
-    if args.iter().any(|a| a == "--vello") {
-        draw_svg_file_vello(svg_arg);
-    } else if args.iter().any(|a| a == "--bench") {
-        bench_svg_file(svg_arg, 1000);
-    } else if let Some(last) = args.last() {
-        if last.ends_with(".svg") {
-            draw_svg_file(last);
-        }
+    /// Render with vello_cpu instead of the scanline rasterizer
+    #[arg(long)]
+    vello: bool,
+
+    /// Benchmark rendering (1000 iterations)
+    #[arg(long)]
+    bench: bool,
+
+    /// Scale factor applied to the svg viewbox size
+    #[arg(long, default_value_t = 1.0)]
+    scale: f32,
+}
+
+fn main() {
+    let args = Args::parse();
+
+    if args.vello {
+        draw_svg_file_vello(args.svg.as_deref().unwrap_or("tiger.svg"), args.scale);
+    } else if args.bench {
+        bench_svg_file(args.svg.as_deref().unwrap_or("tiger.svg"), 1000, args.scale);
+    } else if let Some(svg) = args.svg.as_deref() {
+        draw_svg_file(svg, args.scale);
     } else {
         draw_stuff();
     }
