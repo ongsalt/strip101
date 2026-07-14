@@ -4,8 +4,7 @@ use image::{ImageFormat, Rgba32FImage, RgbaImage};
 use usvg::{Color, FillRule};
 
 use crate::{
-    path::{Path, Point, point},
-    raster::Canvas,
+    path::{Path, Point, Transform, point}, raster::Canvas,
 };
 
 use usvg::tiny_skia_path::PathSegment as UPathSegment;
@@ -16,8 +15,7 @@ const HEIGHT: u32 = 1200;
 fn render_svg(tree: &usvg::Tree) -> Canvas {
     let mut canvas = Canvas::new(WIDTH, HEIGHT);
     let (scale, offset) = fit(tree);
-    canvas.offset = offset;
-    canvas.scale = scale;
+    canvas.transform = Transform { offset, scale };
     walk(tree.root(), &mut canvas);
     canvas
 }

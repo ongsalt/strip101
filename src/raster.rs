@@ -3,12 +3,11 @@ use std::collections::{HashMap, HashSet};
 use image::{ImageFormat, RgbaImage};
 use usvg::{Color, FillRule};
 
-use crate::path::{Line, Path, Point, point};
+use crate::path::{Line, Path, Point, Transform, point};
 
 pub struct Canvas {
     pub image: RgbaImage,
-    pub scale: f32,
-    pub offset: Point,
+    pub transform: Transform,
 }
 
 impl Canvas {
@@ -17,8 +16,7 @@ impl Canvas {
 
         Self {
             image,
-            scale: 1.0,
-            offset: point(0.0, 0.0),
+            transform: Default::default()
         }
     }
 
@@ -35,22 +33,20 @@ impl Canvas {
     /// sort line into 4x4 tile, break it if needed
     /// merge those into strips
     /// calculate each strip winding number (not float)
-    /// 
+    ///
     /// calculate pixel level winding number with aa
     ///     - this can easily be put in compute shader, is it worth it tho
     /// generat draw commands: Fill for inside area and AntialiasedFill(coverageId) for strip
     /// gpu...
     fn fill_tile(&mut self, path: &Path, color: &Color, color_alpha: u8) {
-        let mut lines = path.break_into_lines();
-        apply_transform(&mut lines, self.scale, self.offset);
+        let mut lines = path.break_into_lines(self.transform);
 
         /// must be 2d
         let mut coverage_table: Vec<f32> = vec![0.0; 100];
     }
 
     fn fill_scanline(&mut self, path: &Path, color: &Color, color_alpha: u8) {
-        let mut lines = path.break_into_lines();
-        apply_transform(&mut lines, self.scale, self.offset);
+        let lines = path.break_into_lines(self.transform);
         // println!("lines: {lines:.?}");
 
         let mut lines_by_start_y: HashMap<u32, HashSet<usize>> = HashMap::new();

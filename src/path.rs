@@ -361,17 +361,18 @@ impl Path {
         self
     }
 
-    pub fn break_into_subpath(&self) -> SubPathIter<'_> {
+    pub fn break_into_subpath(&self, transform: Transform) -> SubPathIter<'_> {
         SubPathIter {
             commands: self.commands.iter(),
+            transform,
         }
     }
 
-    pub fn break_into_lines(&self) -> Vec<Line> {
+    pub fn break_into_lines(&self, transform: Transform) -> Vec<Line> {
         let mut out = vec![];
         out.reserve(256);
 
-        for subpath in self.break_into_subpath() {
+        for subpath in self.break_into_subpath(transform) {
             // let area = subpath.shoelace();
             // if area.is_sign_positive() {
             //     subpath.reverse();
@@ -385,6 +386,7 @@ impl Path {
 
 pub struct SubPathIter<'a> {
     commands: std::slice::Iter<'a, PathCommand>,
+    transform: Transform,
 }
 
 impl<'a> Iterator for SubPathIter<'a> {
@@ -395,45 +397,55 @@ impl<'a> Iterator for SubPathIter<'a> {
         let mut current_starting_point = point(0.0, 0.0);
         let mut curren_pos: Point = Point { x: 0.0, y: 0.0 };
 
+        let t = self.transform;
+
         for command in &mut self.commands {
             match command {
                 PathCommand::MoveTo(point) => {
                     current = Some(SubPath { segments: vec![] });
-                    curren_pos = *point;
-                    current_starting_point = *point;
+
+                    curren_pos = t.apply(*point);
+                    current_starting_point = curren_pos;
                 }
                 PathCommand::LineTo(point) => {
+                    let p = t.apply(*point);
                     current
                         .as_mut()
                         .expect("Invalid path operation")
                         .segments
-                        .push(PathSegment::Line(curren_pos, *point));
-                    curren_pos = *point
+                        .push(PathSegment::Line(curren_pos, p));
+                    curren_pos = p
                 }
                 PathCommand::QuadTo(target, c1) => {
+                    let target = t.apply(*target);
+                    let c1 = t.apply(*c1);
                     current
                         .as_mut()
                         .expect("Invalid path operation")
                         .segments
                         .push(PathSegment::Quadratic(QuadraticBezier {
                             start: curren_pos,
-                            control: *c1,
-                            end: *target,
+                            control: c1,
+                            end: target,
                         }));
-                    curren_pos = *target;
+                    curren_pos = target;
                 }
                 PathCommand::CubicTo(target, c1, c2) => {
+                    let target = t.apply(*target);
+                    let c1 = t.apply(*c1);
+                    let c2 = t.apply(*c2);
+
                     current
                         .as_mut()
                         .expect("Invalid path operation")
                         .segments
                         .push(PathSegment::Cubic(CubicBezier {
                             start: curren_pos,
-                            control1: *c1,
-                            control2: *c2,
-                            end: *target,
+                            control1: c1,
+                            control2: c2,
+                            end: target,
                         }));
-                    curren_pos = *target;
+                    curren_pos = target;
                 }
 
                 PathCommand::Close => {
@@ -562,6 +574,7 @@ impl Line {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
     pub x1: u32,
     pub y1: u32,
@@ -592,5 +605,30 @@ impl Rect {
             return None;
         }
         Some(Self { x1, x2, y1, y2 })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Transform {
+    pub scale: f32,
+    pub offset: Point,
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self { scale: 1.0, offset: Default::default() }
+    }
+}
+
+impl Transform {
+    pub fn apply(&self, point: Point) -> Point {
+        if *self == Default::default() {
+            point
+        } else {
+            Point::new(
+                point.x * self.scale + self.offset.x,
+                point.y * self.scale + self.offset.y,
+            )
+        }
     }
 }
